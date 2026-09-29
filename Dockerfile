@@ -30,4 +30,4 @@ ENV NODE_ENV=production
 ENV DATABASE_URL="file:./dev.db"
 
 # Push DB schema on startup and launch backend
-CMD ["sh", "-c", "npx prisma db push --schema=apps/api/prisma/schema.prisma && cd apps/api && npx tsx src/index.ts"]
+CMD ["sh", "-c", "cd apps/api && npx prisma db push && npx tsx src/index.ts"]
