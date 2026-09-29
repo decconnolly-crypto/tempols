@@ -2,7 +2,7 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Install build dependencies for native packages (better-sqlite3)
+# Install build dependencies
 RUN apk add --no-cache python3 make g++
 
 # Copy package definitions
@@ -16,18 +16,15 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Generate Prisma Client at root level
-RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
+# Generate Prisma Client explicitly using the absolute schema path
+RUN npx prisma generate --schema=/app/apps/api/prisma/schema.prisma
 
-# Build frontend static files
+# Build frontend
 RUN npm run build
 
-# Expose Hono server port
 EXPOSE 3002
 
-# Set production environment variables
 ENV NODE_ENV=production
-ENV DATABASE_URL="file:./dev.db"
 
-# Push DB schema on startup and launch backend
-CMD ["sh", "-c", "cd apps/api && npx prisma db push && npx tsx src/index.ts"]
+# Force the unquoted URL directly into the execution step
+CMD ["sh", "-c", "DATABASE_URL=file:/app/apps/api/prisma/dev.db npx prisma db push --schema=/app/apps/api/prisma/schema.prisma && npx tsx /app/apps/api/src/index.ts"]
