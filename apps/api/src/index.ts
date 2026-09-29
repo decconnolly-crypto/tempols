@@ -85,6 +85,14 @@ async function getUnifiedData(selectedDateStr?: string) {
   await evaluateHabitResets()
   const targetDate = selectedDateStr || getTodayStr()
 
+  // Safely sync external providers without crashing local task creation
+  try {
+    await syncExternalProviders(targetDate)
+  } catch (err) {
+    console.warn('External provider sync warning:', err)
+  }
+
+  await ensureHabitsForDate(targetDate)
   // Pull external entries from Google Calendar and Kaneo
   await syncExternalProviders(targetDate)
   await ensureHabitsForDate(targetDate)
@@ -481,7 +489,14 @@ if (process.env.NODE_ENV === 'production') {
   // Catch-all fallback to index.html for SPA routing
   app.get('*', serveStatic({ path: `${distPath}/index.html` }))
 }
-
+// Print detailed Prisma & API errors in Dockge logs
+app.onError((err, c) => {
+  console.error('=== API ERROR DETAILS ===')
+  console.error('Message:', err.message)
+  console.error('Cause:', (err as any).cause || err)
+  console.error('=========================')
+  return c.json({ error: err.message }, 500)
+})
 serve({ fetch: app.fetch, port: 0.0.0.0 }, (info) => {
   console.log(`API running with SQLite persistence and provider sync on http://localhost:${info.port}`)
 })
