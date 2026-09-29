@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Horizon {
+  id        String   @id @default(cuid())
+  title     String
+  targetTag String
+  tasks     Task[]
+  createdAt DateTime @default(now())
+}
+
+model Habit {
+  id                String   @id @default(cuid())
+  title             String
+  phase             String   // 'MORNING' | 'AFTERNOON' | 'EVENING'
+  streak            Int      @default(0)
+  durationMinutes   Int      @default(20)
+  isCompletedToday  Boolean  @default(false)
+  lastCompletedDate String?
+  tasks             Task[]
+  createdAt         DateTime @default(now())
+}
+
+model Task {
+  id              String   @id @default(cuid())
+  title           String
+  description     String?
+  phase           String   // 'MORNING' | 'AFTERNOON' | 'EVENING'
+  durationMinutes Int      @default(30)
+  isCompleted     Boolean  @default(false)
+  provider        String   @default("MANUAL") // 'MANUAL' | 'GOOGLE' | 'KANEO'
+  tags            String   @default("[]")    // JSON stringified array of tags
+  scheduledDate   String   // Format: YYYY-MM-DD
+
+  horizonId String?
+  horizon   Horizon? @relation(fields: [horizonId], references: [id], onDelete: SetNull)
+
+  habitId String?
+  habit   Habit?   @relation(fields: [habitId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+}

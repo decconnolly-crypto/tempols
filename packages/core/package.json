@@ -1,0 +1,15 @@
+{
+  "name": "@tempols/core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./interfaces.ts",
+  "types": "./interfaces.ts",
+  "exports": {
+    ".": {
+      "types": "./interfaces.ts",
+      "import": "./interfaces.ts",
+      "default": "./interfaces.ts"
+    }
+  }
+}

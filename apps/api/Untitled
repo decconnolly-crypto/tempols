@@ -1,0 +1,4 @@
+cd apps/api
+npm install @prisma/client
+npm install prisma --save-dev
+npx prisma init
