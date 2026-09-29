@@ -497,6 +497,16 @@ app.onError((err, c) => {
   console.error('=========================')
   return c.json({ error: err.message }, 500)
 })
+// Add this right before serve(...)
+app.onError((err, c) => {
+  console.error('🔥 API CRASH DETECTED:')
+  console.error('Message:', err.message)
+  console.error('Stack:', err.stack)
+  if ((err as any).cause) console.error('Cause:', (err as any).cause)
+  
+  // Force it to return JSON so the frontend doesn't crash on parsing
+  return c.json({ error: err.message }, 500)
+})
 serve({ 
   fetch: app.fetch, 
   port: 3002, 
