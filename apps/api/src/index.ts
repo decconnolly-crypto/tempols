@@ -482,6 +482,6 @@ if (process.env.NODE_ENV === 'production') {
   app.get('*', serveStatic({ path: `${distPath}/index.html` }))
 }
 
-serve({ fetch: app.fetch, port: 3002 }, (info) => {
+serve({ fetch: app.fetch, port: 0.0.0.0 }, (info) => {
   console.log(`API running with SQLite persistence and provider sync on http://localhost:${info.port}`)
 })
