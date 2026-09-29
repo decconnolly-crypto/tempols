@@ -28,7 +28,7 @@ export default function App() {
     suggestedTasks: Array<{ title: string; durationMinutes: number; phase: 'MORNING' | 'AFTERNOON' | 'EVENING' }>
   ) => {
     try {
-      const createdTasks = await Promise.all(
+      await Promise.all(
         suggestedTasks.map((t) =>
           fetch('/api/tasks', {
             method: 'POST',
@@ -37,13 +37,13 @@ export default function App() {
               title: t.title,
               durationMinutes: t.durationMinutes || 30,
               phase: t.phase || 'MORNING',
-              dateStr: currentDateStr,
+              scheduledDate: currentDateStr,
             }),
-          }).then((res) => res.json())
+          })
         )
       )
   
-      setTasks((prev) => [...prev, ...createdTasks])
+      fetchForDate(currentDateStr)
     } catch (err) {
       console.error('Failed to import AI tasks:', err)
     }
@@ -152,8 +152,7 @@ export default function App() {
         description,
       }),
     })
-      .then((res) => res.json())
-      .then(syncState)
+      .then(() => fetchForDate(scheduledDate))
       .catch((err) => console.error('Error creating task:', err))
   }
 
@@ -216,10 +215,10 @@ export default function App() {
             component={() => (
               <TodayView
                 tasks={coreTasks}
-                habits={habits} /* FIX: Habits are explicitly passed back in! */
-                horizons={horizons} /* FIX: Horizons explicitly passed back in! */
+                habits={habits}
+                horizons={horizons}
                 toggleTask={toggleTask}
-                toggleHabit={toggleHabit} /* FIX: Habit toggles enabled again! */
+                toggleHabit={toggleHabit}
                 currentDateStr={currentDateStr}
                 onChangeDate={changeDate}
                 onOpenPlanner={() => setIsDailyPlannerOpen(true)}
@@ -238,7 +237,8 @@ export default function App() {
           />
           <Route
             path="/focus/:id"
-            component={() => <ActiveFocusView tasks={coreTasks} toggleTask={toggleTask} onOpenBreakdown={(t) => setBreakdownTask(t)} />}          />
+            component={() => <ActiveFocusView tasks={coreTasks} toggleTask={toggleTask} onOpenBreakdown={(t) => setBreakdownTask(t)} />}
+          />
         </Switch>
       </div>
 
@@ -263,17 +263,17 @@ export default function App() {
         onClose={() => setIsNewHabitOpen(false)}
         onSave={addHabit}
       />
-<TaskBreakdownModal
-  isOpen={Boolean(breakdownTask)}
-  task={breakdownTask}
-  onClose={() => setBreakdownTask(null)}
-/>
-<DailyPlannerModal
-  isOpen={isDailyPlannerOpen}
-  onClose={() => setIsDailyPlannerOpen(false)}
-  existingTasks={tasks}
-  onAddTasks={handleAddPlannerTasks}
-/>
+      <TaskBreakdownModal
+        isOpen={Boolean(breakdownTask)}
+        task={breakdownTask}
+        onClose={() => setBreakdownTask(null)}
+      />
+      <DailyPlannerModal
+        isOpen={isDailyPlannerOpen}
+        onClose={() => setIsDailyPlannerOpen(false)}
+        existingTasks={tasks}
+        onAddTasks={handleAddPlannerTasks}
+      />
       <TaskTriageModal
         isOpen={isTriageOpen}
         overdueTasks={overdueTasks}

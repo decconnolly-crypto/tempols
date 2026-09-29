@@ -497,6 +497,10 @@ app.onError((err, c) => {
   console.error('=========================')
   return c.json({ error: err.message }, 500)
 })
-serve({ fetch: app.fetch, port: 0.0.0.0 }, (info) => {
-  console.log(`API running with SQLite persistence and provider sync on http://localhost:${info.port}`)
+serve({ 
+  fetch: app.fetch, 
+  port: 3002, 
+  hostname: "0.0.0.0" 
+}, (info) => {
+  console.log(`API running with SQLite persistence on http://localhost:${info.port}`)
 })
