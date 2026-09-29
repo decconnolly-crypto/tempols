@@ -473,7 +473,7 @@ Return ONLY a valid JSON object matching this structure:
 // ==========================================
 
 if (process.env.NODE_ENV === 'production') {
-  const distPath = path.resolve(__dirname, '../../frontend/dist')
+  const distPath = path.resolve(import.meta.dirname, '../../frontend/dist')
 
   // Serve static JS/CSS/asset files
   app.use('/*', serveStatic({ root: distPath }))
