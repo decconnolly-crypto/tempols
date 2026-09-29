@@ -16,9 +16,6 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Generate Prisma Client explicitly using the absolute schema path
-RUN npx prisma generate --schema=/app/apps/api/prisma/schema.prisma
-
 # Build frontend
 RUN npm run build
 
@@ -26,5 +23,5 @@ EXPOSE 3002
 
 ENV NODE_ENV=production
 
-# Force the unquoted URL directly into the execution step
-CMD ["sh", "-c", "DATABASE_URL=file:/app/apps/api/prisma/dev.db npx prisma db push --schema=/app/apps/api/prisma/schema.prisma && npx tsx /app/apps/api/src/index.ts"]
+# The ultimate fix: Navigate to apps/api, physically write the .env file Prisma demands, generate, push, and start.
+CMD ["sh", "-c", "cd apps/api && echo \"DATABASE_URL=file:/app/apps/api/prisma/dev.db\" > .env && npx prisma generate && npx prisma db push && npx tsx src/index.ts"]
