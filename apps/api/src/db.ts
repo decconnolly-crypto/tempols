@@ -1,31 +1,25 @@
-import { createRequire } from 'node:module'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { PrismaClient } from '@prisma/client'
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
-import path from 'path'
-import { fileURLToPath } from 'url'
 
-const require = createRequire(import.meta.url)
-const { PrismaClient } = require('@prisma/client')
+// Absolute path to apps/api, regardless of process cwd
+const apiDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-// 1. Calculate the absolute path to apps/api based on this file's location
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const apiDir = path.resolve(__dirname, '..')
-
-// 2. Get the database URL
-const rawDbUrl = process.env.DATABASE_URL || 'file:./dev.db'
-
-// 3. Extract the file path
-let dbPath = rawDbUrl.replace(/^file:(?:\/\/)?/, '')
-
-// 4. If relative, resolve to apps/api/prisma/<filename> so it always matches Prisma CLI
-if (!path.isAbsolute(dbPath)) {
-  const cleanFilename = path.basename(dbPath)
-  dbPath = path.resolve(apiDir, 'prisma', cleanFilename)
+// Normalize DATABASE_URL: turn relative sqlite paths into absolute ones
+// rooted at apps/api, so prisma db push and the runtime always agree.
+function resolveDbUrl(raw: string): string {
+  // Handles: "file:./prisma/dev.db", "file:prisma/dev.db", "./prisma/dev.db"
+  const withoutScheme = raw.startsWith('file:') ? raw.slice('file:'.length) : raw
+  if (path.isAbsolute(withoutScheme)) {
+    return `file:${withoutScheme}`
+  }
+  return `file:${path.resolve(apiDir, withoutScheme)}`
 }
 
-const finalDbUrl = `file:${dbPath}`
-console.log(`[Database] SQLite active at: ${finalDbUrl}`)
+const rawDbUrl = process.env.DATABASE_URL || 'file:./prisma/dev.db'
+const dbUrl = resolveDbUrl(rawDbUrl)
 
-const adapter = new PrismaBetterSqlite3({ url: finalDbUrl })
+const adapter = new PrismaBetterSqlite3({ url: dbUrl })
 
 export const prisma = new PrismaClient({ adapter })
