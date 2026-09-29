@@ -16,8 +16,8 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Generate Prisma Client code inside the container
-RUN cd apps/api && npx prisma generate
+# Generate Prisma Client at root level
+RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
 
 # Build frontend static files
 RUN npm run build
@@ -30,4 +30,4 @@ ENV NODE_ENV=production
 ENV DATABASE_URL="file:./dev.db"
 
 # Push DB schema on startup and launch backend
-CMD ["sh", "-c", "cd apps/api && npx prisma generate && npx prisma db push && npx tsx src/index.ts"]
+CMD ["sh", "-c", "npx prisma db push --schema=apps/api/prisma/schema.prisma && cd apps/api && npx tsx src/index.ts"]
