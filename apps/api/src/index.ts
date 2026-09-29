@@ -4,8 +4,13 @@ import { cors } from 'hono/cors'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import path from 'path'
+import { fileURLToPath } from 'url'
 import { prisma } from './db'
 import { syncExternalProviders } from './services/syncService'
+
+// Define __dirname for ES Modules
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const app = new Hono()
 
