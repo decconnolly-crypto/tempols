@@ -9,16 +9,6 @@ export class KaneoAdapter implements ProviderAdapter {
 
     if (!kaneoUrl || !kaneoApiKey) {
       return [
-        {
-          externalId: `kaneo-${dateStr}-hono-structure`,
-          title: 'Finalize Hono API structure',
-          description: 'Ensure all provider routes handle error bounds.',
-          phase: 'AFTERNOON',
-          durationMinutes: 90,
-          scheduledDate: dateStr,
-          tags: ['agency', 'dev'],
-          provider: 'KANEO'
-        }
       ]
     }
 

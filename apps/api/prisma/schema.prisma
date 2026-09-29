@@ -7,11 +7,32 @@ datasource db {
 }
 
 model Horizon {
-  id        String   @id @default(cuid())
-  title     String
-  targetTag String
-  tasks     Task[]
-  createdAt DateTime @default(now())
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  targetTag   String
+  horizonType String      @default("PROJECT") // 'PROJECT' | 'QUARTERLY'
+  quarter     String?                          // '2026-Q4' — null for non-quarterly
+  startDate   String?                          // 'YYYY-MM-DD'
+  targetDate  String?                          // 'YYYY-MM-DD'
+  keyResults  String      @default("[]")      // JSON array of strings
+  status      String      @default("ACTIVE")  // 'ACTIVE' | 'COMPLETED' | 'ARCHIVED'
+  tasks       Task[]
+  milestones  Milestone[]
+  createdAt   DateTime    @default(now())
+}
+
+model Milestone {
+  id          String   @id @default(cuid())
+  horizonId   String
+  horizon     Horizon  @relation(fields: [horizonId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  targetDate  String                          // 'YYYY-MM-DD'
+  weekNumber  Int                             // 1..13 within the quarter
+  isCompleted Boolean  @default(false)
+  tasks       Task[]
+  createdAt   DateTime @default(now())
 }
 
 model Habit {
@@ -40,8 +61,24 @@ model Task {
   horizonId String?
   horizon   Horizon? @relation(fields: [horizonId], references: [id], onDelete: SetNull)
 
+  milestoneId String?
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+
   habitId String?
   habit   Habit?   @relation(fields: [habitId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
+}
+model Commitment {
+  id                String   @id @default(cuid())
+  title             String
+  date              String   // 'YYYY-MM-DD' — the first occurrence for recurring, or the single date
+  startTime         String   // 'HH:MM' in 24h format
+  endTime           String?  // 'HH:MM' optional
+  child             String?  // 'Aoife' | 'Cian' | null
+  location          String?
+  notes             String?
+  recurrence        String   @default("NONE") // 'NONE' | 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY'
+  recurrenceEndDate String?  // 'YYYY-MM-DD' — optional end for recurring
+  createdAt         DateTime @default(now())
 }

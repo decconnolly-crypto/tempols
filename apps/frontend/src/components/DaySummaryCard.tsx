@@ -12,19 +12,22 @@ export function DaySummaryCard({ tasks, onOpenTask, onOpenPlanner }: DaySummaryC
   const percentage = total === 0 ? 0 : Math.round((completed / total) * 100)
   const allDone = total > 0 && completed === total
 
-  // First uncompleted task, in the natural phase order
   const phaseOrder = { MORNING: 0, AFTERNOON: 1, EVENING: 2 } as const
   const nextTask = tasks
     .filter((t) => !t.isCompleted)
     .sort((a, b) => phaseOrder[a.phase] - phaseOrder[b.phase])[0]
 
+  const remainingTasks = tasks.filter((t) => !t.isCompleted)
+  const remainingMins = remainingTasks.reduce((s, t) => s + (t.durationMinutes || 0), 0)
+  const remainingHours = Math.round((remainingMins / 60) * 10) / 10
+
   // ─── Empty state ───────────────────────────────────
   if (total === 0) {
     return (
-      <div className="bg-white rounded-[1.75rem] px-5 py-4 mb-5 flex items-center justify-between shadow-sm">
+      <div className="bg-white rounded-[1.75rem] px-5 py-6 mb-5 flex items-center justify-between shadow-sm">
         <div>
-          <p className="text-[13px] font-medium text-black">Nothing planned today.</p>
-          <p className="text-[11px] font-medium text-black/40 mt-0.5">
+          <p className="text-[14px] font-medium text-black">Nothing planned today.</p>
+          <p className="text-[12px] font-medium text-black/40 mt-1">
             Let the coach build your day.
           </p>
         </div>
@@ -42,18 +45,18 @@ export function DaySummaryCard({ tasks, onOpenTask, onOpenPlanner }: DaySummaryC
   // ─── All done state ────────────────────────────────
   if (allDone) {
     return (
-      <div className="bg-white rounded-[1.75rem] px-5 py-4 mb-5 shadow-sm animate-in fade-in duration-500">
-        <div className="flex items-center justify-between mb-2.5">
+      <div className="bg-white rounded-[1.75rem] px-5 py-6 mb-5 shadow-sm animate-in fade-in duration-500">
+        <div className="flex items-center justify-between mb-3.5">
           <div className="flex items-center gap-1.5">
             {tasks.map((t) => (
               <span
                 key={t.id}
-                className="w-2 h-2 rounded-full bg-black transition-all duration-300 ease-out scale-110"
+                className="w-3 h-3 rounded-full bg-black transition-all duration-300 ease-out scale-110"
               />
             ))}
           </div>
         </div>
-        <p className="text-[13px] font-medium text-black">That&apos;s the day. 🎉</p>
+        <p className="text-[16px] font-medium text-black">That&apos;s the day. 🎉</p>
       </div>
     )
   }
@@ -63,15 +66,15 @@ export function DaySummaryCard({ tasks, onOpenTask, onOpenPlanner }: DaySummaryC
     <button
       type="button"
       onClick={() => nextTask && onOpenTask?.(nextTask)}
-      className="bg-white rounded-[1.75rem] px-5 py-4 mb-5 w-full text-left shadow-sm active:scale-[0.99] transition-transform"
+      className="bg-white rounded-[1.75rem] px-5 py-6 mb-5 w-full text-left shadow-sm active:scale-[0.99] transition-transform"
     >
-      {/* Top row: dots + count + Next cue */}
-      <div className="flex items-center justify-between mb-2.5">
+      {/* Top row: dots + count + % */}
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-1.5">
           {tasks.map((t) => (
             <span
               key={t.id}
-              className={`w-2 h-2 rounded-full transition-all duration-300 ease-out ${
+              className={`w-3 h-3 rounded-full transition-all duration-300 ease-out ${
                 t.isCompleted ? 'bg-black scale-110' : 'bg-black/15 scale-100'
               }`}
             />
@@ -79,26 +82,26 @@ export function DaySummaryCard({ tasks, onOpenTask, onOpenPlanner }: DaySummaryC
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[11px] font-semibold text-black">
+          <span className="text-[12px] font-semibold text-black">
             {completed} of {total}
           </span>
-          <span className="text-[10px] font-bold text-black/30">{percentage}%</span>
+          <span className="text-[11px] font-bold text-black/30">{percentage}%</span>
         </div>
       </div>
 
-      {/* Bottom row: next task */}
+      {/* Middle row: next task */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-0.5">
+          <p className="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-1">
             Next up
           </p>
-          <p className="text-[14px] font-medium text-black truncate">
+          <p className="text-[16px] font-medium text-black truncate">
             {nextTask?.title || 'All clear'}
           </p>
         </div>
         {nextTask && (
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[11px] font-medium text-black/60">
+            <span className="text-[12px] font-medium text-black/60">
               {nextTask.durationMinutes}m
             </span>
             <svg
@@ -112,6 +115,19 @@ export function DaySummaryCard({ tasks, onOpenTask, onOpenPlanner }: DaySummaryC
             </svg>
           </div>
         )}
+      </div>
+
+      {/* Bottom row: remaining summary */}
+      <div className="mt-4 pt-3.5 border-t border-black/5 flex items-center gap-1.5">
+        <span className="text-[11px] font-medium text-black/40">
+          {remainingTasks.length} {remainingTasks.length === 1 ? 'task' : 'tasks'} left
+        </span>
+        <span className="text-[11px] text-black/20">·</span>
+        <span className="text-[11px] font-medium text-black/40">
+          {remainingHours < 1
+            ? `${remainingMins}m`
+            : `${remainingHours}h`} remaining
+        </span>
       </div>
     </button>
   )

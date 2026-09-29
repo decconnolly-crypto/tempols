@@ -7,21 +7,11 @@ export class GoogleCalendarAdapter implements ProviderAdapter {
     const apiKey = process.env.GOOGLE_CALENDAR_API_KEY
     const calendarId = process.env.GOOGLE_CALENDAR_ID
 
-    // Fallback simulated fetch if API keys aren't set in .env yet
     if (!apiKey || !calendarId) {
-      return [
-        {
-          externalId: `gcal-${dateStr}-design-sync`,
-          title: 'Sync with Design Team',
-          description: 'Review the new Horizons mockups.',
-          phase: 'AFTERNOON',
-          durationMinutes: 45,
-          scheduledDate: dateStr,
-          tags: ['agency', 'meeting'],
-          provider: 'GOOGLE'
-        }
-      ]
-    }
+        return []
+      }if (!apiKey || !calendarId) {
+        return []
+      }
 
     try {
       const timeMin = new Date(`${dateStr}T00:00:00Z`).toISOString()

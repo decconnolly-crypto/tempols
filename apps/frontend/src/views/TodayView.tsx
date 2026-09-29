@@ -1,19 +1,24 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useLocation } from 'wouter'
-import type { AppTask, Habit, Horizon } from '../types'
+import type { AppTask, Habit, Horizon, Commitment } from '../types'
 import { TaskCard } from '../components/TaskCard'
 import { DaySummaryCard } from '../components/DaySummaryCard'
+import { CommitmentCard } from '../components/CommitmentCard'
 
 interface TodayViewProps {
   tasks: AppTask[]
   habits?: Habit[]
   horizons?: Horizon[]
+  commitments?: Commitment[]
   toggleTask: (id: string) => void
   toggleHabit?: (id: string) => void
   currentDateStr: string
   onChangeDate: (offset: number) => void
   onOpenPlanner?: () => void
   onOpenTaskActions?: (task: AppTask) => void
+  onOpenCommitmentCreate?: () => void
+  onOpenWeeklyView?: () => void
+  onCommitmentClick?: (commitment: Commitment) => void
 }
 
 const PHASES = ['MORNING', 'AFTERNOON', 'EVENING'] as const
@@ -58,12 +63,16 @@ export function TodayView({
   tasks,
   habits = [],
   horizons = [],
+  commitments = [],
   toggleTask,
   toggleHabit,
   currentDateStr,
   onChangeDate,
   onOpenPlanner,
   onOpenTaskActions,
+  onOpenCommitmentCreate,
+  onOpenWeeklyView,
+  onCommitmentClick,
 }: TodayViewProps) {
   const [selectedPhase, setSelectedPhase] = useState<Phase>(currentPhase())
   const [completedSheetOpen, setCompletedSheetOpen] = useState(false)
@@ -71,7 +80,6 @@ export function TodayView({
 
   const [, setLocation] = useLocation()
 
-  // First-visit-of-the-day greeting
   useEffect(() => {
     const key = 'tempols:lastGreetingDate'
     const today = currentDateStr
@@ -85,12 +93,13 @@ export function TodayView({
 
   const horizonMap = useMemo(() => new Map(horizons.map((h) => [h.id, h])), [horizons])
 
-  // Per-phase counts, for the tabs
   const phaseStats = useMemo(() => {
     return PHASES.reduce<Record<Phase, { count: number; mins: number }>>(
       (acc, p) => {
         const phaseTasks = tasks.filter((t) => !t.isCompleted && t.phase === p)
-        const phaseHabits = habits.filter((h) => (h.phase || 'MORNING') === p && !h.isCompletedToday)
+        const phaseHabits = habits.filter(
+          (h) => (h.phase || 'MORNING') === p && !h.isCompletedToday
+        )
         const mins =
           phaseTasks.reduce((s, t) => s + (t.durationMinutes || 0), 0) +
           phaseHabits.reduce((s, h) => s + (h.durationMinutes || 15), 0)
@@ -100,7 +109,11 @@ export function TodayView({
         }
         return acc
       },
-      { MORNING: { count: 0, mins: 0 }, AFTERNOON: { count: 0, mins: 0 }, EVENING: { count: 0, mins: 0 } }
+      {
+        MORNING: { count: 0, mins: 0 },
+        AFTERNOON: { count: 0, mins: 0 },
+        EVENING: { count: 0, mins: 0 },
+      }
     )
   }, [tasks, habits])
 
@@ -111,9 +124,15 @@ export function TodayView({
   const totalToday = tasks.length
   const completedToday = completedTasks.length
 
+  const sortedCommitments = useMemo(
+    () =>
+      [...commitments].sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    [commitments]
+  )
+
   return (
     <div className="animate-in fade-in duration-300">
-      {/* ─── Header ─────────────────────────────────────── */}
+      {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div className="min-w-0">
           {greeting && (
@@ -155,14 +174,62 @@ export function TodayView({
         </div>
       </div>
 
-      {/* ─── Day Summary Card ───────────────────────────── */}
+      {/* Commitments strip */}
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-2 px-1">
+          <span className="text-[10px] font-semibold text-black/40 uppercase tracking-wider">
+            Today's commitments
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onOpenWeeklyView}
+              className="text-[10px] font-semibold text-black/50 hover:text-black transition-colors uppercase tracking-wider"
+            >
+              Week view
+            </button>
+            {onOpenCommitmentCreate && (
+              <button
+                type="button"
+                onClick={onOpenCommitmentCreate}
+                className="text-[11px] font-semibold text-black bg-black/5 hover:bg-black/10 px-2.5 py-1 rounded-full transition-colors"
+              >
+                + Add
+              </button>
+            )}
+          </div>
+        </div>
+
+        {sortedCommitments.length === 0 ? (
+          onOpenCommitmentCreate && (
+            <button
+              type="button"
+              onClick={onOpenCommitmentCreate}
+              className="w-full bg-white/40 border border-dashed border-black/10 rounded-2xl py-3 px-4 text-center text-[11px] font-medium text-black/40 hover:bg-white/60 transition-colors"
+            >
+              No commitments today. Tap to add one.
+            </button>
+          )
+        ) : (
+          <div className="space-y-2">
+            {sortedCommitments.map((c) => (
+              <CommitmentCard
+                key={`${c.id}-${c.occurrenceDate}`}
+                commitment={c}
+                onClick={onCommitmentClick}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
       <DaySummaryCard
         tasks={tasks}
         onOpenTask={(t) => setLocation(`/focus/${t.id}`)}
         onOpenPlanner={onOpenPlanner}
       />
 
-      {/* ─── Phase Tabs ─────────────────────────────────── */}
+      {/* Phase tabs */}
       <div className="bg-black/10 p-1 rounded-2xl flex items-stretch mb-6 backdrop-blur-sm">
         {PHASES.map((phase) => {
           const isSelected = selectedPhase === phase
@@ -191,7 +258,7 @@ export function TodayView({
         })}
       </div>
 
-      {/* ─── Habits Strip ───────────────────────────────── */}
+      {/* Habits strip */}
       {activePhaseHabits.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-5">
           {activePhaseHabits.map((habit) => (
@@ -199,16 +266,22 @@ export function TodayView({
               key={`habit-${habit.id}`}
               type="button"
               onClick={() => toggleHabit?.(habit.id)}
-              className={`px-3.5 py-2 rounded-full text-[12px] font-medium transition-all active:scale-95 ${
+              className={`px-3.5 py-2 rounded-full text-[12px] font-medium transition-all active:scale-95 flex items-center gap-2 ${
                 habit.isCompletedToday
-                  ? 'bg-black/5 text-black/40 line-through'
+                  ? 'bg-black/5 text-black/40'
                   : 'bg-[#E0E7FF] text-indigo-950 hover:bg-[#d5deff]'
               }`}
             >
-              {habit.title}
-              {habit.streak > 0 && !habit.isCompletedToday && (
-                <span className="ml-2 text-[10px] font-bold text-indigo-900/50">
-                  {habit.streak}
+              <span className={habit.isCompletedToday ? 'line-through' : ''}>
+                {habit.title}
+              </span>
+              {habit.streak > 0 && (
+                <span
+                  className={`text-[10px] font-bold ${
+                    habit.isCompletedToday ? 'text-black/30' : 'text-indigo-900/50'
+                  }`}
+                >
+                  🔥{habit.streak}
                 </span>
               )}
             </button>
@@ -216,7 +289,7 @@ export function TodayView({
         </div>
       )}
 
-      {/* ─── Task List ──────────────────────────────────── */}
+      {/* Task list */}
       <div className="space-y-3 mb-6">
         {activePhaseTasks.length === 0 ? (
           <div className="bg-white/40 border border-dashed border-black/10 rounded-[1.75rem] py-6 px-5 text-center">
@@ -237,7 +310,7 @@ export function TodayView({
         )}
       </div>
 
-      {/* ─── Day Navigation ─────────────────────────────── */}
+      {/* Day navigation */}
       <div className="flex items-center justify-between pt-2">
         <button
           type="button"
@@ -270,7 +343,7 @@ export function TodayView({
         </button>
       </div>
 
-      {/* ─── Completed Sheet ────────────────────────────── */}
+      {/* Completed sheet */}
       {completedSheetOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center">
           <div
@@ -295,7 +368,9 @@ export function TodayView({
             </div>
 
             {completedTasks.length === 0 ? (
-              <p className="text-[12px] text-black/40 text-center py-6">Nothing completed yet.</p>
+              <p className="text-[12px] text-black/40 text-center py-6">
+                Nothing completed yet.
+              </p>
             ) : (
               <div className="space-y-2">
                 {completedTasks.map((task) => (
