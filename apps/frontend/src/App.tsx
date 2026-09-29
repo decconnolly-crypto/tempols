@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react'
-import { Route, Switch } from 'wouter'
+import { useState, useEffect, useCallback } from 'react'
+import { Route, Switch, useLocation } from 'wouter'
 import type { TempoTask } from '@tempols/core'
 import type { AppTask, Horizon, Habit } from './types'
 import { formatDateStr } from './utils/date'
 
 import { BottomNav } from './components/BottomNav'
-import { QuickCaptureModal } from "./modals/QuickCaptureModal";
+import { QuickCaptureModal } from './modals/QuickCaptureModal'
 import { NewHorizonModal } from './modals/NewHorizonModal'
 import { NewHabitModal } from './modals/NewHabitModal'
 import { TaskTriageModal } from './components/TaskTriageModal'
+import { UndoToast, type UndoToastPayload } from './components/UndoToast'
 
 import { TodayView } from './views/TodayView'
 import { HorizonsView } from './views/HorizonsView'
@@ -23,6 +24,25 @@ export default function App() {
   const [habits, setHabits] = useState<Habit[]>([])
   const [currentDateStr, setCurrentDateStr] = useState<string>(formatDateStr(new Date()))
   const [isDailyPlannerOpen, setIsDailyPlannerOpen] = useState(false)
+
+  const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false)
+  const [isNewHorizonOpen, setIsNewHorizonOpen] = useState(false)
+  const [isNewHabitOpen, setIsNewHabitOpen] = useState(false)
+  const [isTriageOpen, setIsTriageOpen] = useState(false)
+  const [breakdownTask, setBreakdownTask] = useState<AppTask | null>(null)
+  const [actionTask, setActionTask] = useState<AppTask | null>(null)
+
+  const [undoToast, setUndoToast] = useState<UndoToastPayload | null>(null)
+
+  const [, setLocation] = useLocation()
+
+  const showUndo = useCallback((message: string, onUndo: () => void) => {
+    setUndoToast({ message, onUndo })
+  }, [])
+
+  const dismissUndo = useCallback(() => {
+    setUndoToast(null)
+  }, [])
 
   const handleAddPlannerTasks = async (
     suggestedTasks: Array<{ title: string; durationMinutes: number; phase: 'MORNING' | 'AFTERNOON' | 'EVENING' }>
@@ -42,18 +62,12 @@ export default function App() {
           })
         )
       )
-  
+
       fetchForDate(currentDateStr)
     } catch (err) {
       console.error('Failed to import AI tasks:', err)
     }
   }
-
-  const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false)
-  const [isNewHorizonOpen, setIsNewHorizonOpen] = useState(false)
-  const [isNewHabitOpen, setIsNewHabitOpen] = useState(false)
-  const [isTriageOpen, setIsTriageOpen] = useState(false)
-  const [breakdownTask, setBreakdownTask] = useState<AppTask | null>(null)
 
   const syncState = (data: { tasks: AppTask[]; horizons: Horizon[]; habits: Habit[] }) => {
     setTasks(data.tasks || [])
@@ -67,7 +81,6 @@ export default function App() {
       .then((data) => {
         syncState(data)
         const fetchedTasks = data.tasks || []
-        // Trigger Triage ONLY for uncompleted tasks from the past (ignoring habits)
         const overdue = fetchedTasks.filter(
           (t: AppTask) => !t.isCompleted && !t.habitId && Boolean(t.scheduledDate) && t.scheduledDate! < dateStr
         )
@@ -105,8 +118,29 @@ export default function App() {
   }
 
   function toggleTask(id: string) {
-    // Optimistic UI update: Check the box instantly
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, isCompleted: !t.isCompleted } : t)))
+    const task = tasks.find((t) => t.id === id)
+    const wasCompleted = task?.isCompleted ?? false
+    const nextState = !wasCompleted
+
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, isCompleted: nextState } : t)))
+
+    if (navigator.vibrate) navigator.vibrate(10)
+
+    if (nextState) {
+      showUndo('Task completed', () => {
+        // Undo: toggle back
+        setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, isCompleted: false } : t)))
+        fetch(`/api/tasks/${id}/toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scheduledDate: currentDateStr }),
+        })
+          .then((res) => res.json())
+          .then(syncState)
+          .catch((err) => console.error('Error undoing task:', err))
+      })
+    }
+
     fetch(`/api/tasks/${id}/toggle`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -118,8 +152,28 @@ export default function App() {
   }
 
   function toggleHabit(id: string) {
-    // Optimistic UI update: Check the box instantly
-    setHabits((prev) => prev.map((h) => (h.id === id ? { ...h, isCompletedToday: !h.isCompletedToday } : h)))
+    const habit = habits.find((h) => h.id === id)
+    const wasCompleted = habit?.isCompletedToday ?? false
+    const nextState = !wasCompleted
+
+    setHabits((prev) => prev.map((h) => (h.id === id ? { ...h, isCompletedToday: nextState } : h)))
+
+    if (navigator.vibrate) navigator.vibrate(10)
+
+    if (nextState && habit) {
+      showUndo(`${habit.title} done`, () => {
+        setHabits((prev) => prev.map((h) => (h.id === id ? { ...h, isCompletedToday: false } : h)))
+        fetch(`/api/habits/${id}/toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scheduledDate: currentDateStr }),
+        })
+          .then((res) => res.json())
+          .then(syncState)
+          .catch((err) => console.error('Error undoing habit:', err))
+      })
+    }
+
     fetch(`/api/habits/${id}/toggle`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -195,13 +249,11 @@ export default function App() {
   }
 
   const handleDropTask = (taskId: string) => {
-    fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
-      .then(() => fetchForDate(currentDateStr))
+    fetch(`/api/tasks/${taskId}`, { method: 'DELETE' }).then(() => fetchForDate(currentDateStr))
   }
 
-  // Filter out habit-clones from the progress bar task list
   const coreTasks = tasks.filter((t) => !t.habitId)
-  
+
   const overdueTasks = coreTasks.filter(
     (t) => !t.isCompleted && Boolean(t.scheduledDate) && t.scheduledDate! < currentDateStr
   )
@@ -222,6 +274,7 @@ export default function App() {
                 currentDateStr={currentDateStr}
                 onChangeDate={changeDate}
                 onOpenPlanner={() => setIsDailyPlannerOpen(true)}
+                onOpenTaskActions={(t) => setActionTask(t)}
               />
             )}
           />
@@ -237,7 +290,13 @@ export default function App() {
           />
           <Route
             path="/focus/:id"
-            component={() => <ActiveFocusView tasks={coreTasks} toggleTask={toggleTask} onOpenBreakdown={(t) => setBreakdownTask(t)} />}
+            component={() => (
+              <ActiveFocusView
+                tasks={coreTasks}
+                toggleTask={toggleTask}
+                onOpenBreakdown={(t) => setBreakdownTask(t)}
+              />
+            )}
           />
         </Switch>
       </div>
@@ -263,17 +322,20 @@ export default function App() {
         onClose={() => setIsNewHabitOpen(false)}
         onSave={addHabit}
       />
+
       <TaskBreakdownModal
         isOpen={Boolean(breakdownTask)}
         task={breakdownTask}
         onClose={() => setBreakdownTask(null)}
       />
+
       <DailyPlannerModal
         isOpen={isDailyPlannerOpen}
         onClose={() => setIsDailyPlannerOpen(false)}
         existingTasks={tasks}
         onAddTasks={handleAddPlannerTasks}
       />
+
       <TaskTriageModal
         isOpen={isTriageOpen}
         overdueTasks={overdueTasks}
@@ -282,6 +344,69 @@ export default function App() {
         onDropTask={handleDropTask}
         onClose={() => setIsTriageOpen(false)}
       />
+
+      {actionTask && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            onClick={() => setActionTask(null)}
+          />
+          <div className="relative bg-white w-full max-w-md rounded-t-[2rem] p-6 pb-8 shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-200">
+            <div className="flex justify-center mb-3">
+              <div className="w-10 h-1 bg-black/15 rounded-full" />
+            </div>
+            <h3 className="text-base font-medium text-black mb-1 truncate">{actionTask.title}</h3>
+            <p className="text-[12px] text-black/50 mb-5">
+              {actionTask.durationMinutes}m · {actionTask.phase}
+            </p>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  toggleTask(actionTask.id)
+                  setActionTask(null)
+                }}
+                className="w-full bg-black text-white text-[13px] font-semibold py-3.5 rounded-full active:scale-[0.98] transition-transform"
+              >
+                {actionTask.isCompleted ? 'Mark incomplete' : 'Mark complete'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setLocation(`/focus/${actionTask.id}`)
+                  setActionTask(null)
+                }}
+                className="w-full bg-gray-100 text-black text-[13px] font-semibold py-3.5 rounded-full active:scale-[0.98] transition-transform"
+              >
+                Start focus
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setBreakdownTask(actionTask)
+                  setActionTask(null)
+                }}
+                className="w-full bg-gray-100 text-black text-[13px] font-semibold py-3.5 rounded-full active:scale-[0.98] transition-transform"
+              >
+                AI breakdown
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActionTask(null)}
+                className="w-full text-black/50 text-[12px] font-medium py-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <UndoToast toast={undoToast} onDismiss={dismissUndo} />
     </div>
   )
 }
