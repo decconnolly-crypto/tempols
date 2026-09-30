@@ -232,12 +232,9 @@ export function DailyHero({
       {/* Expanded content — only rendered when not collapsed */}
       {!collapsed && (
         <div className="absolute inset-x-0 top-0 flex flex-col items-center text-center animate-in fade-in duration-300 origin-top">
-          {/* Day nav at the top */}
-          <div className="mb-6">{dayNavRow('expanded')}</div>
-
           {/* The orb */}
           <div
-            className="relative mb-6"
+            className="relative mb-6 mt-2"
             style={{ width: 100, height: 100 }}
           >
             <div
@@ -291,7 +288,7 @@ export function DailyHero({
             <button
               type="button"
               onClick={onOpenPlanner}
-              className="mt-7 h-11 px-5 bg-white/70 backdrop-blur-xl hover:bg-white/90 text-black rounded-full text-[13px] font-semibold border border-white/70 shadow-[0_4px_16px_rgba(0,0,0,0.06)] flex items-center gap-2 active:scale-95 transition-transform"
+              className="mt-6 h-11 px-5 bg-white/70 backdrop-blur-xl hover:bg-white/90 text-black rounded-full text-[13px] font-semibold border border-white/70 shadow-[0_4px_16px_rgba(0,0,0,0.06)] flex items-center gap-2 active:scale-95 transition-transform"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2L14.26 8.74L21 11L14.26 13.26L12 20L9.74 13.26L3 11L9.74 8.74L12 2Z" />
@@ -299,6 +296,9 @@ export function DailyHero({
               <span>Plan my day</span>
             </button>
           )}
+
+          {/* Day nav at the bottom */}
+          <div className="mt-6">{dayNavRow('expanded')}</div>
         </div>
       )}
     </div>
