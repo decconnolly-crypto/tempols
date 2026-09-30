@@ -117,15 +117,22 @@ export default function App() {
       .then((data) => {
         syncState(data)
         const fetchedTasks = data.tasks || []
-        const overdue = fetchedTasks.filter(
-          (t: AppTask) =>
-            !t.isCompleted &&
-            !t.habitId &&
-            Boolean(t.scheduledDate) &&
-            t.scheduledDate! < dateStr
-        )
-        if (overdue.length > 0) {
-          setIsTriageOpen(true)
+        // Only trigger triage when looking at today or a past day.
+        // Previewing a future day shouldn't nag you about overdue tasks.
+        const todayStr = formatDateStr(new Date())
+        const isTodayOrPast = dateStr <= todayStr
+
+        if (isTodayOrPast) {
+          const overdue = fetchedTasks.filter(
+            (t: AppTask) =>
+              !t.isCompleted &&
+              !t.habitId &&
+              Boolean(t.scheduledDate) &&
+              t.scheduledDate! < dateStr
+          )
+          if (overdue.length > 0) {
+            setIsTriageOpen(true)
+          }
         }
       })
       .catch((err) => console.error('Error syncing:', err))

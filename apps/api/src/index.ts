@@ -351,16 +351,23 @@ async function getUnifiedData(selectedDateStr?: string) {
 
   await ensureHabitsForDate(targetDate)
 
+  const todayStr = getTodayStr()
+  const isTodayOrPast = targetDate <= todayStr
+
   const rawTasks = await prisma.task.findMany({
-    where: {
-      OR: [
-        { scheduledDate: targetDate },
-        {
-          scheduledDate: { lt: targetDate },
-          isCompleted: false,
+    where: isTodayOrPast
+      ? {
+          OR: [
+            { scheduledDate: targetDate },
+            {
+              scheduledDate: { lt: targetDate },
+              isCompleted: false,
+            },
+          ],
+        }
+      : {
+          scheduledDate: targetDate,
         },
-      ],
-    },
   })
 
   const tasks = rawTasks.map((t) => ({
