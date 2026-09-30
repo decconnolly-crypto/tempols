@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import type { AppTask, Commitment, Habit } from '../types'
 
 interface DailyHeroProps {
@@ -8,6 +8,9 @@ interface DailyHeroProps {
   habits: Habit[]
   collapsed: boolean
   onOpenPlanner?: () => void
+  onPreviousDay: () => void
+  onNextDay: () => void
+  onGoToToday: () => void
 }
 
 type Phase = 'MORNING' | 'AFTERNOON' | 'EVENING'
@@ -123,8 +126,12 @@ export function DailyHero({
   habits,
   collapsed,
   onOpenPlanner,
+  onPreviousDay,
+  onNextDay,
+  onGoToToday,
 }: DailyHeroProps) {
   const [hour, setHour] = useState(new Date().getHours())
+  const touchStartX = useRef<number | null>(null)
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -141,14 +148,81 @@ export function DailyHero({
     [tasks, commitments, habits]
   )
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return
+    const dx = e.changedTouches[0].clientX - touchStartX.current
+    if (dx > 60) onPreviousDay()
+    else if (dx < -60) onNextDay()
+    touchStartX.current = null
+  }
+
+  const dayNavRow = (variant: 'expanded' | 'collapsed') => {
+    const isSmall = variant === 'collapsed'
+    return (
+      <div
+        className="flex items-center gap-2 touch-pan-y select-none"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <button
+          type="button"
+          onClick={onPreviousDay}
+          aria-label="Previous day"
+          className={`${
+            isSmall ? 'w-6 h-6' : 'w-7 h-7'
+          } rounded-full bg-white/50 backdrop-blur-sm border border-white/60 flex items-center justify-center text-black/50 hover:text-black active:scale-95 transition-all shrink-0`}
+        >
+          <svg
+            className={isSmall ? 'w-3 h-3' : 'w-3.5 h-3.5'}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          onClick={onGoToToday}
+          className="text-[11px] font-semibold uppercase tracking-wider text-black/45 hover:text-black transition-colors"
+        >
+          {formatHeaderDate(currentDateStr)}
+        </button>
+
+        <button
+          type="button"
+          onClick={onNextDay}
+          aria-label="Next day"
+          className={`${
+            isSmall ? 'w-6 h-6' : 'w-7 h-7'
+          } rounded-full bg-white/50 backdrop-blur-sm border border-white/60 flex items-center justify-center text-black/50 hover:text-black active:scale-95 transition-all shrink-0`}
+        >
+          <svg
+            className={isSmall ? 'w-3 h-3' : 'w-3.5 h-3.5'}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    )
+  }
+
   return (
-    <div className="relative mb-4 h-[300px]">
+    <div className="relative mb-4 h-[340px]">
       {/* Collapsed row — only rendered when collapsed */}
       {collapsed && (
         <div className="absolute inset-x-0 top-0 flex items-center justify-between animate-in fade-in duration-200">
-          <p className="text-[13px] font-medium text-black/60 truncate pr-3">
-            {formatHeaderDate(currentDateStr)}
-          </p>
+          {dayNavRow('collapsed')}
           <p className="text-[11px] font-medium text-black/40 truncate pl-3 text-right">
             {briefing}
           </p>
@@ -158,9 +232,12 @@ export function DailyHero({
       {/* Expanded content — only rendered when not collapsed */}
       {!collapsed && (
         <div className="absolute inset-x-0 top-0 flex flex-col items-center text-center animate-in fade-in duration-300 origin-top">
+          {/* Day nav at the top */}
+          <div className="mb-6">{dayNavRow('expanded')}</div>
+
           {/* The orb */}
           <div
-            className="relative mb-4 mt-2"
+            className="relative mb-6"
             style={{ width: 100, height: 100 }}
           >
             <div
@@ -199,18 +276,13 @@ export function DailyHero({
             />
           </div>
 
-          {/* Date */}
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-black/40 mb-1.5">
-            {formatHeaderDate(currentDateStr)}
-          </p>
-
           {/* Greeting */}
-          <h1 className="text-[26px] font-medium text-black tracking-tight leading-tight mb-2">
+          <h1 className="text-[26px] font-medium text-black tracking-tight leading-tight mb-3">
             {greeting}, Dec.
           </h1>
 
           {/* Briefing */}
-          <p className="text-[13px] font-medium text-black/55 max-w-[280px] leading-relaxed">
+          <p className="text-[13px] font-medium text-black/55 max-w-[300px] leading-relaxed">
             {briefing}
           </p>
 
@@ -219,7 +291,7 @@ export function DailyHero({
             <button
               type="button"
               onClick={onOpenPlanner}
-              className="mt-5 h-11 px-5 bg-white/70 backdrop-blur-xl hover:bg-white/90 text-black rounded-full text-[13px] font-semibold border border-white/70 shadow-[0_4px_16px_rgba(0,0,0,0.06)] flex items-center gap-2 active:scale-95 transition-transform"
+              className="mt-7 h-11 px-5 bg-white/70 backdrop-blur-xl hover:bg-white/90 text-black rounded-full text-[13px] font-semibold border border-white/70 shadow-[0_4px_16px_rgba(0,0,0,0.06)] flex items-center gap-2 active:scale-95 transition-transform"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2L14.26 8.74L21 11L14.26 13.26L12 20L9.74 13.26L3 11L9.74 8.74L12 2Z" />

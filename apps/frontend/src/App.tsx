@@ -117,8 +117,9 @@ export default function App() {
       .then((data) => {
         syncState(data)
         const fetchedTasks = data.tasks || []
+
         // Only trigger triage when looking at today or a past day.
-        // Previewing a future day shouldn't nag you about overdue tasks.
+        // Previewing a future day shouldn't nag about overdue tasks.
         const todayStr = formatDateStr(new Date())
         const isTodayOrPast = dateStr <= todayStr
 
@@ -162,6 +163,10 @@ export default function App() {
     const mm = String(d.getMonth() + 1).padStart(2, '0')
     const dd = String(d.getDate()).padStart(2, '0')
     setCurrentDateStr(`${yyyy}-${mm}-${dd}`)
+  }
+
+  function goToToday() {
+    setCurrentDateStr(formatDateStr(new Date()))
   }
 
   function toggleTask(id: string) {
@@ -455,6 +460,7 @@ export default function App() {
                 toggleHabit={toggleHabit}
                 currentDateStr={currentDateStr}
                 onChangeDate={changeDate}
+                onGoToToday={goToToday}
                 onOpenPlanner={() => setIsDailyPlannerOpen(true)}
                 onOpenTaskActions={(t) => setActionTask(t)}
                 onOpenCommitmentCreate={() => setIsNewCommitmentOpen(true)}

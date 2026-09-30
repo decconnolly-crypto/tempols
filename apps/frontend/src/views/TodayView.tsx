@@ -17,6 +17,7 @@ interface TodayViewProps {
   toggleHabit?: (id: string) => void
   currentDateStr: string
   onChangeDate: (offset: number) => void
+  onGoToToday: () => void
   onOpenPlanner?: () => void
   onOpenTaskActions?: (task: AppTask) => void
   onOpenCommitmentCreate?: () => void
@@ -39,14 +40,6 @@ function formatMins(mins: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`
 }
 
-function isToday(dateStr: string): boolean {
-  const d = new Date()
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}` === dateStr
-}
-
 export function TodayView({
   tasks,
   habits = [],
@@ -56,6 +49,7 @@ export function TodayView({
   toggleHabit,
   currentDateStr,
   onChangeDate,
+  onGoToToday,
   onOpenPlanner,
   onOpenTaskActions,
   onOpenCommitmentCreate,
@@ -128,6 +122,9 @@ export function TodayView({
         habits={habits}
         collapsed={heroCollapsed}
         onOpenPlanner={onOpenPlanner}
+        onPreviousDay={() => onChangeDate(-1)}
+        onNextDay={() => onChangeDate(1)}
+        onGoToToday={onGoToToday}
       />
 
       {/* Commitments strip */}
@@ -283,51 +280,7 @@ export function TodayView({
           ))
         )}
       </div>
-
-      {/* Day navigation */}
-      <div className="flex items-center justify-between pt-2">
-        <button
-          type="button"
-          onClick={() => onChangeDate(-1)}
-          className="text-[11px] font-medium text-black/45 hover:text-black transition-colors flex items-center gap-1"
-        >
-          <svg
-            className="w-3 h-3"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2.5}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Yesterday
-        </button>
-        {!isToday(currentDateStr) && (
-          <button
-            type="button"
-            onClick={() => onChangeDate(0)}
-            className="text-[11px] font-semibold text-black"
-          >
-            Today
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => onChangeDate(1)}
-          className="text-[11px] font-medium text-black/45 hover:text-black transition-colors flex items-center gap-1"
-        >
-          Tomorrow
-          <svg
-            className="w-3 h-3"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2.5}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-      </div>
+      {/* Day navigation removed — now lives in the hero */}
     </div>
   )
 }
