@@ -75,3 +75,48 @@ export type Commitment = {
   recurrence: 'NONE' | 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY'
   isRecurring: boolean
 }
+
+export type Ingredient = {
+  name: string
+  quantity?: string
+  unit?: string
+}
+
+export type MealCategory =
+  | 'EASY'
+  | 'PASTA'
+  | 'WINTER'
+  | 'WORLD'
+  | 'FUN'
+  | 'FAKEAWAY'
+  | 'SUNDAY'
+  | 'ANY'
+
+export type RecipeIngredient = string | Ingredient
+
+export type RecipeInstruction = {
+  title?: string
+  text: string
+}
+
+export type Recipe = {
+  id: string
+  title: string
+  category: MealCategory
+  ingredients: RecipeIngredient[]
+  instructions: RecipeInstruction[]
+  cookTime: number
+  tags: string[]
+  notes?: string | null
+  sourceUrl?: string | null
+  sourceName?: string | null
+  createdAt: string
+}
+
+export type Meal = {
+  id: string
+  date: string
+  mealType: string
+  notes?: string | null
+  recipe: Recipe | null
+}

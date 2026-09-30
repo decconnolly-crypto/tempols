@@ -1,7 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Route, Switch, useLocation } from 'wouter'
 import type { TempoTask } from '@tempols/core'
-import type { AppTask, Horizon, Habit, Milestone, Commitment } from './types'
+import type {
+  AppTask,
+  Horizon,
+  Habit,
+  Milestone,
+  Commitment,
+  Recipe,
+} from './types'
 import { formatDateStr } from './utils/date'
 
 import { BottomNav } from './components/BottomNav'
@@ -11,19 +18,33 @@ import { NewHabitModal } from './modals/NewHabitModal'
 import { NewMilestoneModal } from './modals/NewMilestoneModal'
 import { NewCommitmentModal } from './modals/NewCommitmentModal'
 import { QuarterPlannerModal } from './modals/QuarterPlannerModal'
+import { RecipeFormModal } from './modals/RecipeFormModal'
+import { RecipePickerModal } from './modals/RecipePickerModal'
+import { MealPlannerModal } from './modals/MealPlannerModal'
+import { AddRecipeFromUrlModal } from './modals/AddRecipeFromUrlModal'
+import { RecipeDetailSheet } from './components/RecipeDetailSheet'
 import { MilestoneDetailSheet } from './components/MilestoneDetailSheet'
 import { WeeklyCommitmentsSheet } from './components/WeeklyCommitmentsSheet'
+import { ShoppingListSheet } from './components/ShoppingListSheet'
 import { TaskTriageModal } from './components/TaskTriageModal'
 import { UndoToast, type UndoToastPayload } from './components/UndoToast'
 
 import { TodayView } from './views/TodayView'
 import { HorizonsView } from './views/HorizonsView'
 import { HabitsView } from './views/HabitsView'
+import { MealsView } from './views/MealsView'
+import { RecipesView } from './views/RecipesView'
 import { ActiveFocusView } from './views/ActiveFocusView'
 import { TaskBreakdownModal } from './modals/TaskBreakdownModal'
 import { DailyPlannerModal } from './modals/DailyPlannerModal'
 
 type Phase = 'MORNING' | 'AFTERNOON' | 'EVENING'
+
+interface MealAssignment {
+  date: string
+  recipeId: string | null
+  reason: string
+}
 
 function initialPhase(): Phase {
   const h = new Date().getHours()
@@ -32,11 +53,24 @@ function initialPhase(): Phase {
   return 'EVENING'
 }
 
+function mondayOfToday(): string {
+  const d = new Date()
+  const day = d.getDay()
+  const offset = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + offset)
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 export default function App() {
   const [tasks, setTasks] = useState<AppTask[]>([])
   const [horizons, setHorizons] = useState<Horizon[]>([])
   const [habits, setHabits] = useState<Habit[]>([])
   const [commitments, setCommitments] = useState<Commitment[]>([])
+  const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [recipesLoading, setRecipesLoading] = useState(false)
   const [currentDateStr, setCurrentDateStr] = useState<string>(
     formatDateStr(new Date())
   )
@@ -50,6 +84,9 @@ export default function App() {
   const [isTriageOpen, setIsTriageOpen] = useState(false)
   const [isQuarterPlannerOpen, setIsQuarterPlannerOpen] = useState(false)
   const [isWeeklyCommitmentsOpen, setIsWeeklyCommitmentsOpen] = useState(false)
+  const [isShoppingListOpen, setIsShoppingListOpen] = useState(false)
+  const [isMealPlannerOpen, setIsMealPlannerOpen] = useState(false)
+  const [isAddFromUrlOpen, setIsAddFromUrlOpen] = useState(false)
   const [breakdownTask, setBreakdownTask] = useState<AppTask | null>(null)
   const [actionTask, setActionTask] = useState<AppTask | null>(null)
   const [actionCommitment, setActionCommitment] = useState<Commitment | null>(
@@ -57,6 +94,12 @@ export default function App() {
   )
   const [milestoneHorizon, setMilestoneHorizon] = useState<Horizon | null>(null)
   const [detailMilestone, setDetailMilestone] = useState<Milestone | null>(null)
+  const [recipeFormOpen, setRecipeFormOpen] = useState(false)
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
+  const [detailRecipe, setDetailRecipe] = useState<Recipe | null>(null)
+  const [pickerDate, setPickerDate] = useState<string | null>(null)
+  const [mealsRefreshKey, setMealsRefreshKey] = useState(0)
+  const [mealsWeekStart, setMealsWeekStart] = useState<string>(mondayOfToday)
 
   const [undoToast, setUndoToast] = useState<UndoToastPayload | null>(null)
 
@@ -118,8 +161,6 @@ export default function App() {
         syncState(data)
         const fetchedTasks = data.tasks || []
 
-        // Only trigger triage when looking at today or a past day.
-        // Previewing a future day shouldn't nag about overdue tasks.
         const todayStr = formatDateStr(new Date())
         const isTodayOrPast = dateStr <= todayStr
 
@@ -139,9 +180,22 @@ export default function App() {
       .catch((err) => console.error('Error syncing:', err))
   }
 
+  const fetchRecipes = useCallback(() => {
+    setRecipesLoading(true)
+    fetch('/api/recipes')
+      .then((res) => res.json())
+      .then((data) => setRecipes(data.recipes || []))
+      .catch((err) => console.error('Error loading recipes:', err))
+      .finally(() => setRecipesLoading(false))
+  }, [])
+
   useEffect(() => {
     fetchForDate(currentDateStr)
   }, [currentDateStr])
+
+  useEffect(() => {
+    fetchRecipes()
+  }, [fetchRecipes])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -435,7 +489,125 @@ export default function App() {
     }).then(() => fetchForDate(currentDateStr))
   }
 
+  const handleAssignRecipe = (date: string, recipeId: string) => {
+    fetch('/api/meals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, recipeId }),
+    })
+      .then(() => setMealsRefreshKey((k) => k + 1))
+      .catch((err) => console.error('Error assigning recipe:', err))
+  }
+
+  const handleSetMealNote = (date: string, notes: string) => {
+    fetch('/api/meals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, notes }),
+    })
+      .then(() => setMealsRefreshKey((k) => k + 1))
+      .catch((err) => console.error('Error setting meal note:', err))
+  }
+
+  const handleClearMeal = (date: string) => {
+    fetch(`/api/meals?start=${date}&end=${date}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const meal = data.meals?.[0]
+        if (meal) {
+          return fetch(`/api/meals/${meal.id}`, { method: 'DELETE' })
+        }
+      })
+      .then(() => setMealsRefreshKey((k) => k + 1))
+      .catch((err) => console.error('Error clearing meal:', err))
+  }
+
+  const handleCommitMealPlan = async (assignments: MealAssignment[]) => {
+    const promises = assignments
+      .filter((a) => a.recipeId)
+      .map((a) =>
+        fetch('/api/meals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: a.date, recipeId: a.recipeId }),
+        })
+      )
+
+    await Promise.all(promises)
+    setMealsRefreshKey((k) => k + 1)
+  }
+
+  const handleSaveRecipe = (data: {
+    title: string
+    category: string
+    cookTime: number
+    ingredients: Array<{ name: string; quantity?: string; unit?: string }>
+    instructions: Array<{ title?: string; text: string }>
+    tags: string[]
+    notes?: string
+  }) => {
+    const url = editingRecipe
+      ? `/api/recipes/${editingRecipe.id}`
+      : '/api/recipes'
+    const method = editingRecipe ? 'PATCH' : 'POST'
+
+    fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+      .then(() => {
+        fetchRecipes()
+        setRecipeFormOpen(false)
+        setEditingRecipe(null)
+      })
+      .catch((err) => console.error('Error saving recipe:', err))
+  }
+
+  const handleSaveFetchedRecipe = (data: {
+    title: string
+    category: string
+    cookTime: number
+    ingredients: string[]
+    instructions: Array<{ title?: string; text: string }>
+    tags: string[]
+    sourceUrl?: string
+    sourceName?: string
+  }) => {
+    return fetch('/api/recipes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+      .then((res) => res.json())
+      .then((result) => {
+        fetchRecipes()
+        setIsAddFromUrlOpen(false)
+        return result
+      })
+  }
+
+  const handleDeleteRecipe = (id: string) => {
+    fetch(`/api/recipes/${id}`, { method: 'DELETE' })
+      .then(() => {
+        fetchRecipes()
+        setRecipeFormOpen(false)
+        setEditingRecipe(null)
+      })
+      .catch((err) => console.error('Error deleting recipe:', err))
+  }
+
   const coreTasks = tasks.filter((t) => !t.habitId)
+
+  const mealsWeekEnd = (() => {
+    const [y, m, d] = mealsWeekStart.split('-').map(Number)
+    const date = new Date(y, m - 1, d)
+    date.setDate(date.getDate() + 6)
+    const yyyy = date.getFullYear()
+    const mm = String(date.getMonth() + 1).padStart(2, '0')
+    const dd = String(date.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  })()
 
   const overdueTasks = coreTasks.filter(
     (t) =>
@@ -491,6 +663,39 @@ export default function App() {
                 habits={habits}
                 onToggleHabit={toggleHabit}
                 onOpenCreate={() => setIsNewHabitOpen(true)}
+              />
+            )}
+          />
+          <Route
+            path="/meals"
+            component={() => (
+              <MealsView
+                onOpenRecipePicker={(date) => setPickerDate(date)}
+                onOpenRecipeLibrary={() => setLocation('/recipes')}
+                onOpenShoppingList={() => setIsShoppingListOpen(true)}
+                onOpenAIPlanner={() => setIsMealPlannerOpen(true)}
+                refreshKey={mealsRefreshKey}
+                weekStart={mealsWeekStart}
+                onWeekChange={setMealsWeekStart}
+              />
+            )}
+          />
+          <Route
+            path="/recipes"
+            component={() => (
+              <RecipesView
+                recipes={recipes}
+                loading={recipesLoading}
+                onNewRecipe={() => {
+                  setEditingRecipe(null)
+                  setRecipeFormOpen(true)
+                }}
+                onEditRecipe={(r) => {
+                  setEditingRecipe(r)
+                  setRecipeFormOpen(true)
+                }}
+                onViewRecipe={(r) => setDetailRecipe(r)}
+                onAddFromUrl={() => setIsAddFromUrlOpen(true)}
               />
             )}
           />
@@ -555,6 +760,21 @@ export default function App() {
         onAddCommitment={() => setIsNewCommitmentOpen(true)}
       />
 
+      <ShoppingListSheet
+        isOpen={isShoppingListOpen}
+        weekStart={mealsWeekStart}
+        weekEnd={mealsWeekEnd}
+        onClose={() => setIsShoppingListOpen(false)}
+      />
+
+      <MealPlannerModal
+        isOpen={isMealPlannerOpen}
+        weekStart={mealsWeekStart}
+        recipes={recipes}
+        onClose={() => setIsMealPlannerOpen(false)}
+        onCommit={handleCommitMealPlan}
+      />
+
       <MilestoneDetailSheet
         milestone={detailMilestone}
         onClose={() => setDetailMilestone(null)}
@@ -584,6 +804,46 @@ export default function App() {
             .then(() => fetchForDate(currentDateStr))
             .catch((err) => console.error('Error deleting milestone:', err))
         }}
+      />
+
+      <RecipeDetailSheet
+        recipe={detailRecipe}
+        onClose={() => setDetailRecipe(null)}
+        onEdit={(r) => {
+          setEditingRecipe(r)
+          setRecipeFormOpen(true)
+        }}
+      />
+
+      <AddRecipeFromUrlModal
+        isOpen={isAddFromUrlOpen}
+        onClose={() => setIsAddFromUrlOpen(false)}
+        onSave={handleSaveFetchedRecipe}
+      />
+
+      <RecipePickerModal
+        isOpen={Boolean(pickerDate)}
+        date={pickerDate}
+        recipes={recipes}
+        onClose={() => setPickerDate(null)}
+        onAssignRecipe={handleAssignRecipe}
+        onSetNote={handleSetMealNote}
+        onClearDay={handleClearMeal}
+        onOpenLibrary={() => {
+          setPickerDate(null)
+          setLocation('/recipes')
+        }}
+      />
+
+      <RecipeFormModal
+        isOpen={recipeFormOpen}
+        recipe={editingRecipe}
+        onClose={() => {
+          setRecipeFormOpen(false)
+          setEditingRecipe(null)
+        }}
+        onSave={handleSaveRecipe}
+        onDelete={handleDeleteRecipe}
       />
 
       <NewHabitModal

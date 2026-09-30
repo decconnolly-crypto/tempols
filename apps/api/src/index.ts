@@ -56,7 +56,222 @@ function currentQuarter(): string {
   return `${now.getFullYear()}-Q${q}`
 }
 
-// ── Date helpers for commitment recurrence ──
+// ==========================================
+// RECIPE PARSING HELPERS
+// ==========================================
+
+function parseIsoDuration(duration: string): number {
+  const match = /^PT(?:(\d+)H)?(?:(\d+)M)?/.exec(duration || '')
+  if (!match) return 30
+  const hours = parseInt(match[1] || '0', 10)
+  const minutes = parseInt(match[2] || '0', 10)
+  const total = hours * 60 + minutes
+  return total > 0 ? total : 30
+}
+
+function extractDomainName(url: string): string {
+  try {
+    const u = new URL(url)
+    return u.hostname.replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
+function extractJsonLdRecipe(html: string): {
+  title: string
+  ingredients: string[]
+  instructions: Array<{ title?: string; text: string }>
+  cookTime: number
+  tags: string[]
+} | null {
+  const scriptRegex =
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+  const blocks: string[] = []
+  let match
+  while ((match = scriptRegex.exec(html)) !== null) {
+    blocks.push(match[1])
+  }
+
+  for (const raw of blocks) {
+    let parsed: any
+    try {
+      parsed = JSON.parse(raw.trim())
+    } catch {
+      continue
+    }
+
+    const candidates: any[] = []
+    const collect = (node: any) => {
+      if (!node || typeof node !== 'object') return
+      if (Array.isArray(node)) {
+        node.forEach(collect)
+        return
+      }
+      if (node['@type'] === 'Recipe') candidates.push(node)
+      if (Array.isArray(node['@graph'])) node['@graph'].forEach(collect)
+    }
+    collect(parsed)
+
+    if (candidates.length === 0) continue
+    const r = candidates[0]
+
+    const rawIngredients: string[] = Array.isArray(r.recipeIngredient)
+      ? r.recipeIngredient
+      : []
+    const ingredients = rawIngredients
+      .map((i: any) =>
+        typeof i === 'string' ? i.replace(/\s+/g, ' ').trim() : ''
+      )
+      .filter(Boolean)
+
+    const instructions: Array<{ title?: string; text: string }> = []
+    const collectInstructions = (node: any, sectionTitle?: string) => {
+      if (!node) return
+      if (typeof node === 'string') {
+        const t = node.trim()
+        if (t) instructions.push({ title: sectionTitle, text: t })
+        return
+      }
+      if (Array.isArray(node)) {
+        node.forEach((n) => collectInstructions(n, sectionTitle))
+        return
+      }
+      if (typeof node === 'object') {
+        const type = node['@type']
+        if (type === 'HowToSection' && Array.isArray(node.itemListElement)) {
+          const title = node.name?.trim() || sectionTitle
+          node.itemListElement.forEach((child: any) =>
+            collectInstructions(child, title)
+          )
+          return
+        }
+        const stepText = node.text?.trim() || node.name?.trim()
+        if (stepText) {
+          const match = /^([^–—]{3,60})\s*[–—]\s*(.+)$/.exec(stepText)
+          if (match) {
+            instructions.push({
+              title: match[1].trim(),
+              text: match[2].trim(),
+            })
+          } else {
+            instructions.push({ title: sectionTitle, text: stepText })
+          }
+        }
+      }
+    }
+    collectInstructions(r.recipeInstructions)
+
+    const cookTime = parseIsoDuration(r.cookTime || r.totalTime || 'PT30M')
+
+    const tagsRaw: string[] = []
+    if (typeof r.recipeCuisine === 'string') tagsRaw.push(r.recipeCuisine)
+    if (typeof r.recipeCategory === 'string') tagsRaw.push(r.recipeCategory)
+    if (typeof r.keywords === 'string') {
+      tagsRaw.push(...r.keywords.split(',').map((t: string) => t.trim()))
+    } else if (Array.isArray(r.keywords)) {
+      tagsRaw.push(...r.keywords.map((t: any) => String(t).trim()))
+    }
+    const tags = Array.from(
+      new Set(tagsRaw.map((t) => t.toLowerCase()).filter(Boolean))
+    )
+
+    return {
+      title: (r.name || '').trim() || 'Untitled recipe',
+      ingredients,
+      instructions,
+      cookTime,
+      tags,
+    }
+  }
+
+  return null
+}
+
+async function extractWithGemini(
+  html: string,
+  apiKey: string
+): Promise<{
+  title: string
+  ingredients: string[]
+  instructions: Array<{ title?: string; text: string }>
+  cookTime: number
+  tags: string[]
+} | null> {
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 20000)
+
+  const prompt = `Extract the recipe from the following text and return ONLY valid JSON in this exact shape, no prose, no code fences:
+
+{
+  "title": "...",
+  "ingredients": ["...", "..."],
+  "instructions": [{ "title": "...", "text": "..." }, ...],
+  "cookTime": 30,
+  "tags": ["...", "..."]
+}
+
+Rules:
+- ingredients: one string per ingredient, exactly as written on the page
+- instructions: one object per step; "title" is optional (omit if the step has no short heading)
+- cookTime: total time in minutes (a number, not a string)
+- tags: any cuisine, dietary, or category tags you can infer from the page
+- If you cannot find a full recipe, return {"error": "not a recipe"}
+
+TEXT:
+${text}`
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'TempoLS/1.0',
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
+      }
+    )
+
+    const data = await res.json()
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+    const clean = rawText.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(clean)
+
+    if (parsed.error) return null
+
+    return {
+      title: String(parsed.title || 'Untitled recipe'),
+      ingredients: Array.isArray(parsed.ingredients)
+        ? parsed.ingredients.map(String)
+        : [],
+      instructions: Array.isArray(parsed.instructions)
+        ? parsed.instructions
+            .map((i: any) =>
+              typeof i === 'string'
+                ? { text: i }
+                : { title: i.title, text: i.text || '' }
+            )
+            .filter((i: any) => i.text)
+        : [],
+      cookTime: typeof parsed.cookTime === 'number' ? parsed.cookTime : 30,
+      tags: Array.isArray(parsed.tags) ? parsed.tags.map(String) : [],
+    }
+  } catch (err) {
+    console.error('Gemini recipe extraction error:', err)
+    return null
+  }
+}
+
+// ── Date helpers for commitment recurrence and meal ranges ──
 
 function parseDateStr(dateStr: string): Date {
   const [y, m, d] = dateStr.split('-').map(Number)
@@ -78,21 +293,22 @@ function diffDays(a: string, b: string): number {
   return Math.round((db.getTime() - da.getTime()) / (1000 * 60 * 60 * 24))
 }
 
-/**
- * Given a commitment and a date range, return the list of date strings
- * on which the commitment occurs within that range.
- */
 function expandCommitmentDates(
-  commitment: { date: string; recurrence: string; recurrenceEndDate: string | null },
+  commitment: {
+    date: string
+    recurrence: string
+    recurrenceEndDate: string | null
+  },
   rangeStart: string,
   rangeEnd: string
 ): string[] {
   const { date, recurrence, recurrenceEndDate } = commitment
   const results: string[] = []
 
-  const effectiveEnd = recurrenceEndDate && recurrenceEndDate < rangeEnd
-    ? recurrenceEndDate
-    : rangeEnd
+  const effectiveEnd =
+    recurrenceEndDate && recurrenceEndDate < rangeEnd
+      ? recurrenceEndDate
+      : rangeEnd
 
   if (recurrence === 'NONE') {
     if (date >= rangeStart && date <= rangeEnd) {
@@ -134,8 +350,7 @@ function expandCommitmentDates(
 
     while (true) {
       const candidate = new Date(y, m, day)
-      // Handle month overflow (e.g. Feb 30 → Mar 2). If month changed, skip.
-      if (candidate.getMonth() === (m % 12)) {
+      if (candidate.getMonth() === m % 12) {
         const candidateStr = `${candidate.getFullYear()}-${String(
           candidate.getMonth() + 1
         ).padStart(2, '0')}-${String(candidate.getDate()).padStart(2, '0')}`
@@ -215,7 +430,6 @@ async function getCommitmentsForRange(
     }
   }
 
-  // Sort by date, then by start time
   expanded.sort((a, b) => {
     if (a.occurrenceDate !== b.occurrenceDate) {
       return a.occurrenceDate.localeCompare(b.occurrenceDate)
@@ -290,6 +504,42 @@ When producing a plan:
       { "title": "...", "milestoneTitle": "...", "durationMinutes": 60, "phase": "MORNING", "scheduledDate": "YYYY-MM-DD" }
     ]
   }
+}`
+
+const MEAL_PLANNER_SYSTEM_PROMPT = `You are a meal planning assistant for a UK family. Your job is to fill a week's worth of dinners, one per day, respecting the household's weekly theme structure.
+
+WEEKLY THEMES (fixed — never break these):
+- Monday: Easy Dinner (low-effort, quick meals)
+- Tuesday: Pasta Night (pasta-based dishes)
+- Wednesday: Winter Warmers (stews, casseroles, hearty meals)
+- Thursday: World Foods (curries, stir fries, Mexican, Asian)
+- Friday: Fun Food (pizza, burgers, fish and chips — the treat night)
+- Saturday: Fakeaway (home-made takeaway equivalents)
+- Sunday: Sunday Lunch (roasts, big family meals)
+
+Your job is to assign ONE recipe per day from the provided library. You MUST:
+1. Only assign recipes whose category matches the day's theme (or 'ANY', which fits any day)
+2. Prefer variety — avoid recipes that appear in the "recent meals" list
+3. Consider the cook time — weekdays should lean towards shorter meals if there's a choice
+4. Return exactly one meal per day
+5. If a day's category has no suitable recipes in the library, return that day with recipeId: null and a note explaining why
+
+You will receive:
+- The week's dates, each with its theme
+- The recipe library (with id, title, category, cookTime, tags)
+- Recent meals (recipes used in the last 2 weeks)
+
+Return ONLY valid JSON, no prose, no code fences:
+
+{
+  "reply": "short intro sentence",
+  "assignments": [
+    {
+      "date": "YYYY-MM-DD",
+      "recipeId": "recipe-id-or-null",
+      "reason": "one short sentence explaining the choice"
+    }
+  ]
 }`
 
 // ==========================================
@@ -416,7 +666,9 @@ async function getUnifiedData(selectedDateStr?: string) {
         }
       })
 
-    const completedMilestones = horizonMilestones.filter((m) => m.isCompleted).length
+    const completedMilestones = horizonMilestones.filter(
+      (m) => m.isCompleted
+    ).length
 
     return {
       ...h,
@@ -581,14 +833,16 @@ app.post('/api/milestones', async (c) => {
 
   let weekNumber = body.weekNumber
   if (!weekNumber) {
-    const horizon = await prisma.horizon.findUnique({ where: { id: body.horizonId } })
+    const horizon = await prisma.horizon.findUnique({
+      where: { id: body.horizonId },
+    })
     if (horizon?.startDate) {
       const start = new Date(horizon.startDate)
       const target = new Date(body.targetDate)
-      const diffDays = Math.floor(
+      const diffDaysCalc = Math.floor(
         (target.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
       )
-      weekNumber = Math.max(1, Math.min(13, Math.floor(diffDays / 7) + 1))
+      weekNumber = Math.max(1, Math.min(13, Math.floor(diffDaysCalc / 7) + 1))
     } else {
       weekNumber = 1
     }
@@ -746,7 +1000,9 @@ app.post('/api/tasks/:id/toggle', async (c) => {
     })
 
     if (task.habitId) {
-      const habit = await prisma.habit.findUnique({ where: { id: task.habitId } })
+      const habit = await prisma.habit.findUnique({
+        where: { id: task.habitId },
+      })
       if (habit) {
         await prisma.habit.update({
           where: { id: task.habitId },
@@ -770,7 +1026,8 @@ app.patch('/api/tasks/:id', async (c) => {
   const body = await c.req.json().catch(() => ({}))
 
   const updateData: Record<string, unknown> = {}
-  if (body.scheduledDate !== undefined) updateData.scheduledDate = body.scheduledDate
+  if (body.scheduledDate !== undefined)
+    updateData.scheduledDate = body.scheduledDate
   if (body.isCompleted !== undefined) updateData.isCompleted = body.isCompleted
   if (body.horizonId !== undefined) updateData.horizonId = body.horizonId
   if (body.milestoneId !== undefined) updateData.milestoneId = body.milestoneId
@@ -788,6 +1045,359 @@ app.delete('/api/tasks/:id', async (c) => {
   const id = c.req.param('id')
   await prisma.task.delete({ where: { id } })
   return c.json({ success: true })
+})
+
+// ==========================================
+// API ROUTES — RECIPES
+// ==========================================
+
+app.post('/api/recipes/fetch-url', async (c) => {
+  const { url } = await c.req.json().catch(() => ({}))
+
+  if (!url || typeof url !== 'string') {
+    return c.json({ error: 'url required' }, 400)
+  }
+
+  if (url.includes('instagram.com')) {
+    return c.json(
+      {
+        error:
+          "Instagram URLs can't be fetched directly. Paste the caption text instead.",
+        needsText: true,
+      },
+      400
+    )
+  }
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+        Accept: 'text/html,application/xhtml+xml,application/xml',
+        'Accept-Language': 'en-GB,en;q=0.9',
+      },
+      redirect: 'follow',
+    })
+
+    if (!res.ok) {
+      return c.json({ error: `Site returned ${res.status}.` }, 400)
+    }
+
+    const html = await res.text()
+
+    const jsonLd = extractJsonLdRecipe(html)
+
+    if (
+      jsonLd &&
+      jsonLd.ingredients.length > 0 &&
+      jsonLd.instructions.length > 0
+    ) {
+      return c.json({
+        success: true,
+        source: 'json-ld',
+        recipe: {
+          ...jsonLd,
+          sourceUrl: url,
+          sourceName: extractDomainName(url),
+        },
+      })
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) {
+      return c.json(
+        { error: 'Could not parse this page. AI fallback not configured.' },
+        400
+      )
+    }
+
+    const fallback = await extractWithGemini(html, apiKey)
+    if (!fallback) {
+      return c.json(
+        { error: 'Could not extract a recipe from that page.' },
+        400
+      )
+    }
+
+    return c.json({
+      success: true,
+      source: 'gemini',
+      recipe: {
+        ...fallback,
+        sourceUrl: url,
+        sourceName: extractDomainName(url),
+      },
+    })
+  } catch (err) {
+    console.error('fetch-url error:', err)
+    return c.json({ error: 'Could not reach that URL.' }, 500)
+  }
+})
+
+app.get('/api/recipes', async (c) => {
+  const recipes = await prisma.recipe.findMany({
+    orderBy: [{ category: 'asc' }, { title: 'asc' }],
+  })
+
+  return c.json({
+    recipes: recipes.map((r) => ({
+      ...r,
+      ingredients: safeParseJson<unknown[]>(r.ingredients, []),
+      instructions: safeParseJson<Array<{ title?: string; text: string }>>(
+        r.instructions,
+        []
+      ),
+      tags: safeParseJson<string[]>(r.tags, []),
+    })),
+  })
+})
+
+app.post('/api/recipes', async (c) => {
+  const body = await c.req.json()
+
+  if (!body.title || !body.category) {
+    return c.json({ error: 'title and category required' }, 400)
+  }
+
+  const recipe = await prisma.recipe.create({
+    data: {
+      title: body.title,
+      category: body.category,
+      ingredients: JSON.stringify(body.ingredients || []),
+      instructions: JSON.stringify(body.instructions || []),
+      cookTime: body.cookTime || 30,
+      tags: JSON.stringify(body.tags || []),
+      notes: body.notes || null,
+      sourceUrl: body.sourceUrl || null,
+      sourceName: body.sourceName || null,
+    },
+  })
+
+  return c.json({
+    success: true,
+    recipe: {
+      ...recipe,
+      ingredients: safeParseJson(recipe.ingredients, []),
+      instructions: safeParseJson(recipe.instructions, []),
+      tags: safeParseJson(recipe.tags, []),
+    },
+  })
+})
+
+app.patch('/api/recipes/:id', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+
+  const updateData: Record<string, unknown> = {}
+  if (body.title !== undefined) updateData.title = body.title
+  if (body.category !== undefined) updateData.category = body.category
+  if (body.ingredients !== undefined)
+    updateData.ingredients = JSON.stringify(body.ingredients)
+  if (body.instructions !== undefined)
+    updateData.instructions = JSON.stringify(body.instructions)
+  if (body.cookTime !== undefined) updateData.cookTime = body.cookTime
+  if (body.tags !== undefined) updateData.tags = JSON.stringify(body.tags)
+  if (body.notes !== undefined) updateData.notes = body.notes
+  if (body.sourceUrl !== undefined) updateData.sourceUrl = body.sourceUrl
+  if (body.sourceName !== undefined) updateData.sourceName = body.sourceName
+
+  const recipe = await prisma.recipe.update({ where: { id }, data: updateData })
+
+  return c.json({
+    success: true,
+    recipe: {
+      ...recipe,
+      ingredients: safeParseJson(recipe.ingredients, []),
+      instructions: safeParseJson(recipe.instructions, []),
+      tags: safeParseJson(recipe.tags, []),
+    },
+  })
+})
+
+app.delete('/api/recipes/:id', async (c) => {
+  const id = c.req.param('id')
+  await prisma.recipe.delete({ where: { id } })
+  return c.json({ success: true })
+})
+
+// ==========================================
+// API ROUTES — MEALS
+// ==========================================
+
+app.get('/api/meals', async (c) => {
+  const start = c.req.query('start') || getTodayStr()
+  const end = c.req.query('end') || addDays(start, 6)
+
+  const meals = await prisma.meal.findMany({
+    where: {
+      date: { gte: start, lte: end },
+    },
+    include: { recipe: true },
+    orderBy: { date: 'asc' },
+  })
+
+  return c.json({
+    start,
+    end,
+    meals: meals.map((m) => ({
+      id: m.id,
+      date: m.date,
+      mealType: m.mealType,
+      notes: m.notes,
+      recipe: m.recipe
+        ? {
+            id: m.recipe.id,
+            title: m.recipe.title,
+            category: m.recipe.category,
+            cookTime: m.recipe.cookTime,
+            ingredients: safeParseJson(m.recipe.ingredients, []),
+            instructions: safeParseJson(m.recipe.instructions, []),
+            tags: safeParseJson(m.recipe.tags, []),
+            notes: m.recipe.notes,
+            sourceUrl: m.recipe.sourceUrl,
+            sourceName: m.recipe.sourceName,
+            createdAt: m.recipe.createdAt,
+          }
+        : null,
+    })),
+  })
+})
+
+app.post('/api/meals', async (c) => {
+  const body = await c.req.json()
+
+  if (!body.date) {
+    return c.json({ error: 'date required' }, 400)
+  }
+
+  const mealType = body.mealType || 'DINNER'
+
+  if (body.recipeId) {
+    const recipe = await prisma.recipe.findUnique({
+      where: { id: body.recipeId },
+    })
+    if (!recipe) {
+      return c.json({ error: 'Recipe not found' }, 400)
+    }
+  }
+
+  const meal = await prisma.meal.upsert({
+    where: {
+      date_mealType: {
+        date: body.date,
+        mealType,
+      },
+    },
+    create: {
+      date: body.date,
+      mealType,
+      recipeId: body.recipeId || null,
+      notes: body.notes || null,
+    },
+    update: {
+      recipeId: body.recipeId !== undefined ? body.recipeId : undefined,
+      notes: body.notes !== undefined ? body.notes : undefined,
+    },
+    include: { recipe: true },
+  })
+
+  return c.json({
+    success: true,
+    meal: {
+      id: meal.id,
+      date: meal.date,
+      mealType: meal.mealType,
+      notes: meal.notes,
+      recipe: meal.recipe
+        ? {
+            id: meal.recipe.id,
+            title: meal.recipe.title,
+            category: meal.recipe.category,
+            cookTime: meal.recipe.cookTime,
+            ingredients: safeParseJson(meal.recipe.ingredients, []),
+            instructions: safeParseJson(meal.recipe.instructions, []),
+            tags: safeParseJson(meal.recipe.tags, []),
+            notes: meal.recipe.notes,
+            sourceUrl: meal.recipe.sourceUrl,
+            sourceName: meal.recipe.sourceName,
+            createdAt: meal.recipe.createdAt,
+          }
+        : null,
+    },
+  })
+})
+
+app.delete('/api/meals/:id', async (c) => {
+  const id = c.req.param('id')
+  await prisma.meal.delete({ where: { id } })
+  return c.json({ success: true })
+})
+
+app.get('/api/meals/shopping-list', async (c) => {
+  const start = c.req.query('start') || getTodayStr()
+  const end = c.req.query('end') || addDays(start, 6)
+
+  const meals = await prisma.meal.findMany({
+    where: { date: { gte: start, lte: end } },
+    include: { recipe: true },
+  })
+
+  const flat: Array<{
+    name: string
+    quantity?: string
+    unit?: string
+    from: string[]
+  }> = []
+
+  for (const meal of meals) {
+    if (!meal.recipe) continue
+    const ingredients = safeParseJson<unknown[]>(meal.recipe.ingredients, [])
+
+    for (const raw of ingredients) {
+      let name: string
+      let quantity: string | undefined
+      let unit: string | undefined
+
+      if (typeof raw === 'string') {
+        // Fetched recipes: one string per ingredient.
+        // Use the whole string as the "name" for now.
+        name = raw.trim()
+      } else if (raw && typeof raw === 'object') {
+        const obj = raw as { name?: string; quantity?: string; unit?: string }
+        name = (obj.name || '').trim()
+        quantity = obj.quantity
+        unit = obj.unit
+      } else {
+        continue
+      }
+
+      if (!name) continue
+      const key = name.toLowerCase()
+      const existing = flat.find((f) => f.name.toLowerCase() === key)
+      if (existing) {
+        existing.from.push(meal.recipe!.title)
+        if (
+          existing.quantity &&
+          quantity &&
+          existing.quantity !== quantity
+        ) {
+          existing.quantity = 'as needed'
+        }
+      } else {
+        flat.push({
+          name,
+          quantity,
+          unit,
+          from: [meal.recipe!.title],
+        })
+      }
+    }
+  }
+
+  flat.sort((a, b) => a.name.localeCompare(b.name))
+
+  return c.json({ start, end, shoppingList: flat })
 })
 
 // ==========================================
@@ -872,10 +1482,19 @@ app.post('/api/ai/decompose', async (c) => {
 })
 
 app.post('/api/ai/daily-plan', async (c) => {
-  const { messages, existingTasks = [], commitments = [], habits = [] } =
-    await c.req
-      .json()
-      .catch(() => ({ messages: [], existingTasks: [], commitments: [], habits: [] }))
+  const {
+    messages,
+    existingTasks = [],
+    commitments = [],
+    habits = [],
+  } = await c.req
+    .json()
+    .catch(() => ({
+      messages: [],
+      existingTasks: [],
+      commitments: [],
+      habits: [],
+    }))
 
   if (!messages || !Array.isArray(messages)) {
     return c.json({ error: 'Messages array is required' }, 400)
@@ -891,34 +1510,42 @@ app.post('/api/ai/daily-plan', async (c) => {
   }
 
   try {
-    const openTasks = (existingTasks as Array<{
-      title: string
-      durationMinutes?: number
-      phase?: string
-      isCompleted?: boolean
-      habitId?: string | null
-    }>).filter((t) => !t.isCompleted && !t.habitId)
+    const openTasks = (
+      existingTasks as Array<{
+        title: string
+        durationMinutes?: number
+        phase?: string
+        isCompleted?: boolean
+        habitId?: string | null
+      }>
+    ).filter((t) => !t.isCompleted && !t.habitId)
 
-    const openHabits = (habits as Array<{
-      title: string
-      durationMinutes?: number
-      phase?: string
-      isCompletedToday?: boolean
-    }>).filter((h) => !h.isCompletedToday)
+    const openHabits = (
+      habits as Array<{
+        title: string
+        durationMinutes?: number
+        phase?: string
+        isCompletedToday?: boolean
+      }>
+    ).filter((h) => !h.isCompletedToday)
 
-    const sortedCommitments = (commitments as Array<{
-      title: string
-      startTime: string
-      endTime?: string | null
-      child?: string | null
-    }>).sort((a, b) => a.startTime.localeCompare(b.startTime))
+    const sortedCommitments = (
+      commitments as Array<{
+        title: string
+        startTime: string
+        endTime?: string | null
+        child?: string | null
+      }>
+    ).sort((a, b) => a.startTime.localeCompare(b.startTime))
 
     const tasksContext =
       openTasks.length > 0
         ? openTasks
             .map(
               (t) =>
-                `- ${t.title} (${t.durationMinutes || 30}m, ${t.phase || 'MORNING'})`
+                `- ${t.title} (${t.durationMinutes || 30}m, ${
+                  t.phase || 'MORNING'
+                })`
             )
             .join('\n')
         : '- None'
@@ -928,9 +1555,9 @@ app.post('/api/ai/daily-plan', async (c) => {
         ? sortedCommitments
             .map(
               (c) =>
-                `- ${c.startTime}${c.endTime ? `-${c.endTime}` : ''} ${c.title}${
-                  c.child ? ` (${c.child})` : ''
-                }`
+                `- ${c.startTime}${c.endTime ? `-${c.endTime}` : ''} ${
+                  c.title
+                }${c.child ? ` (${c.child})` : ''}`
             )
             .join('\n')
         : '- None'
@@ -940,7 +1567,9 @@ app.post('/api/ai/daily-plan', async (c) => {
         ? openHabits
             .map(
               (h) =>
-                `- ${h.title} (${h.durationMinutes || 20}m, ${h.phase || 'MORNING'})`
+                `- ${h.title} (${h.durationMinutes || 20}m, ${
+                  h.phase || 'MORNING'
+                })`
             )
             .join('\n')
         : '- None'
@@ -1039,7 +1668,10 @@ app.post('/api/ai/plan-quarter/interview', async (c) => {
 
   try {
     const todayStr = getTodayStr()
-    const systemPrompt = QUARTER_INTERVIEW_SYSTEM_PROMPT.replace('{{TODAY}}', todayStr)
+    const systemPrompt = QUARTER_INTERVIEW_SYSTEM_PROMPT.replace(
+      '{{TODAY}}',
+      todayStr
+    )
 
     const contents = [
       { parts: [{ text: systemPrompt }] },
@@ -1185,6 +1817,146 @@ app.post('/api/ai/plan-quarter/commit', async (c) => {
 })
 
 // ==========================================
+// API ROUTES — MEAL PLANNING (AI)
+// ==========================================
+
+app.post('/api/ai/plan-meals', async (c) => {
+  const { startDate } = await c.req
+    .json()
+    .catch(() => ({ startDate: getTodayStr() }))
+
+  const start = startDate || getTodayStr()
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY
+
+  if (!apiKey) {
+    return c.json(
+      {
+        error:
+          'AI key not configured. Add GEMINI_API_KEY to your environment to use AI meal planning.',
+      },
+      400
+    )
+  }
+
+  try {
+    const days: Array<{ date: string; weekday: string; theme: string }> = []
+    const THEMES: Record<number, string> = {
+      0: 'Sunday Lunch',
+      1: 'Easy Dinner',
+      2: 'Pasta Night',
+      3: 'Winter Warmers',
+      4: 'World Foods',
+      5: 'Fun Food',
+      6: 'Fakeaway',
+    }
+
+    for (let i = 0; i < 7; i++) {
+      const date = addDays(start, i)
+      const d = parseDateStr(date)
+      const theme = THEMES[d.getDay()]
+      days.push({
+        date,
+        weekday: d.toLocaleDateString('en-GB', { weekday: 'long' }),
+        theme,
+      })
+    }
+
+    const recipes = await prisma.recipe.findMany()
+    const recipeLibrary = recipes.map((r) => ({
+      id: r.id,
+      title: r.title,
+      category: r.category,
+      cookTime: r.cookTime,
+      tags: safeParseJson<string[]>(r.tags, []),
+    }))
+
+    const recentStart = addDays(start, -14)
+    const recentEnd = addDays(start, -1)
+    const recentMeals = await prisma.meal.findMany({
+      where: { date: { gte: recentStart, lte: recentEnd } },
+      include: { recipe: true },
+    })
+    const recentRecipeTitles = recentMeals
+      .filter((m) => m.recipe)
+      .map((m) => `${m.recipe!.title} (${m.date})`)
+
+    const daysContext = days
+      .map((d) => `- ${d.date} (${d.weekday}) — theme: ${d.theme}`)
+      .join('\n')
+
+    const libraryContext =
+      recipeLibrary.length > 0
+        ? recipeLibrary
+            .map(
+              (r) =>
+                `- id: ${r.id} | "${r.title}" | category: ${r.category} | ${
+                  r.cookTime
+                }m${r.tags.length ? ` | tags: ${r.tags.join(', ')}` : ''}`
+            )
+            .join('\n')
+        : '(library is empty)'
+
+    const recentContext =
+      recentRecipeTitles.length > 0
+        ? recentRecipeTitles.map((r) => `- ${r}`).join('\n')
+        : '(nothing recent)'
+
+    const userPrompt = `Plan next week's dinners.
+
+WEEK AHEAD:
+${daysContext}
+
+RECIPE LIBRARY:
+${libraryContext}
+
+RECENTLY USED (avoid repeating these):
+${recentContext}
+
+Assign one recipe per day. Respect the theme categories strictly. Return the JSON as specified.`
+
+    const model = 'gemini-2.5-pro'
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'TempoLS/1.0',
+        },
+        body: JSON.stringify({
+          contents: [
+            { parts: [{ text: MEAL_PLANNER_SYSTEM_PROMPT }] },
+            { parts: [{ text: userPrompt }] },
+          ],
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const errBody = await response.text()
+      console.error('Plan-meals Gemini error:', response.status, errBody)
+      throw new Error(`Gemini HTTP ${response.status}`)
+    }
+
+    const data = await response.json()
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+    const cleanText = rawText.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(cleanText)
+
+    return c.json({
+      reply: parsed.reply || 'Here is the week.',
+      assignments: Array.isArray(parsed.assignments) ? parsed.assignments : [],
+      days,
+    })
+  } catch (err) {
+    console.error('Plan-meals error:', err)
+    return c.json({ error: 'Could not generate a meal plan. Try again.' }, 500)
+  }
+})
+
+// ==========================================
 // PRODUCTION FRONTEND STATIC SERVING
 // ==========================================
 
@@ -1214,6 +1986,8 @@ serve(
     hostname: '0.0.0.0',
   },
   (info) => {
-    console.log(`API running with SQLite persistence on http://localhost:${info.port}`)
+    console.log(
+      `API running with SQLite persistence on http://localhost:${info.port}`
+    )
   }
 )

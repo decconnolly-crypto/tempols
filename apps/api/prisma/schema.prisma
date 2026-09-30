@@ -82,3 +82,28 @@ model Commitment {
   recurrenceEndDate String?  // 'YYYY-MM-DD' — optional end for recurring
   createdAt         DateTime @default(now())
 }
+model Recipe {
+  id           String   @id @default(cuid())
+  title        String
+  category     String   // 'EASY' | 'PASTA' | 'WINTER' | 'WORLD' | 'FUN' | 'FAKEAWAY' | 'SUNDAY' | 'ANY'
+  ingredients  String   @default("[]") // JSON array of strings (or legacy { name, quantity?, unit? })
+  instructions String   @default("[]") // JSON array: [{ title?: string, text: string }]
+  cookTime     Int      @default(30)   // minutes
+  tags         String   @default("[]") // JSON array of strings
+  notes        String?
+  sourceUrl    String?
+  sourceName   String?
+  meals        Meal[]
+  createdAt    DateTime @default(now())
+}
+model Meal {
+  id        String   @id @default(cuid())
+  date      String   // 'YYYY-MM-DD'
+  mealType  String   @default("DINNER")
+  recipeId  String?
+  recipe    Recipe?  @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@unique([date, mealType])
+}
