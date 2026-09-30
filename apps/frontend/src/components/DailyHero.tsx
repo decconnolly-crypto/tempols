@@ -7,6 +7,7 @@ interface DailyHeroProps {
   commitments: Commitment[]
   habits: Habit[]
   collapsed: boolean
+  onOpenPlanner?: () => void
 }
 
 type Phase = 'MORNING' | 'AFTERNOON' | 'EVENING'
@@ -121,6 +122,7 @@ export function DailyHero({
   commitments,
   habits,
   collapsed,
+  onOpenPlanner,
 }: DailyHeroProps) {
   const [hour, setHour] = useState(new Date().getHours())
 
@@ -140,8 +142,8 @@ export function DailyHero({
   )
 
   return (
-    <div className="relative mb-4 h-[260px]">
-      {/* Collapsed row — only rendered when collapsed, no overlap with expanded */}
+    <div className="relative mb-4 h-[300px]">
+      {/* Collapsed row — only rendered when collapsed */}
       {collapsed && (
         <div className="absolute inset-x-0 top-0 flex items-center justify-between animate-in fade-in duration-200">
           <p className="text-[13px] font-medium text-black/60 truncate pr-3">
@@ -157,8 +159,10 @@ export function DailyHero({
       {!collapsed && (
         <div className="absolute inset-x-0 top-0 flex flex-col items-center text-center animate-in fade-in duration-300 origin-top">
           {/* The orb */}
-          <div className="relative mb-4 mt-2" style={{ width: 100, height: 100 }}>
-            {/* Outer glow — slow breathing */}
+          <div
+            className="relative mb-4 mt-2"
+            style={{ width: 100, height: 100 }}
+          >
             <div
               className="absolute inset-0 rounded-full animate-breathe-slow"
               style={{
@@ -167,8 +171,6 @@ export function DailyHero({
                 transform: 'scale(1.25)',
               }}
             />
-
-            {/* Ring shimmer */}
             <div
               className="absolute inset-0 rounded-full animate-shimmer"
               style={{
@@ -176,8 +178,6 @@ export function DailyHero({
                 opacity: 0.5,
               }}
             />
-
-            {/* Core orb */}
             <div
               className="absolute inset-0 rounded-full animate-breathe"
               style={{
@@ -185,8 +185,6 @@ export function DailyHero({
                 boxShadow: `inset 0 0 20px rgba(255,255,255,0.4), 0 0 40px ${gradient.glow}`,
               }}
             />
-
-            {/* Top highlight */}
             <div
               className="absolute rounded-full pointer-events-none"
               style={{
@@ -215,6 +213,20 @@ export function DailyHero({
           <p className="text-[13px] font-medium text-black/55 max-w-[280px] leading-relaxed">
             {briefing}
           </p>
+
+          {/* Plan CTA */}
+          {onOpenPlanner && (
+            <button
+              type="button"
+              onClick={onOpenPlanner}
+              className="mt-5 h-11 px-5 bg-white/70 backdrop-blur-xl hover:bg-white/90 text-black rounded-full text-[13px] font-semibold border border-white/70 shadow-[0_4px_16px_rgba(0,0,0,0.06)] flex items-center gap-2 active:scale-95 transition-transform"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L14.26 8.74L21 11L14.26 13.26L12 20L9.74 13.26L3 11L9.74 8.74L12 2Z" />
+              </svg>
+              <span>Plan my day</span>
+            </button>
+          )}
         </div>
       )}
     </div>

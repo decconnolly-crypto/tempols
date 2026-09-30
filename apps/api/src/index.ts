@@ -865,26 +865,14 @@ app.post('/api/ai/decompose', async (c) => {
 })
 
 app.post('/api/ai/daily-plan', async (c) => {
-  const { messages, existingTasks = [] } = await c.req
-    .json()
-    .catch(() => ({ messages: [], existingTasks: [] }))
+  const { messages, existingTasks = [], commitments = [], habits = [] } =
+    await c.req
+      .json()
+      .catch(() => ({ messages: [], existingTasks: [], commitments: [], habits: [] }))
 
   if (!messages || !Array.isArray(messages)) {
     return c.json({ error: 'Messages array is required' }, 400)
   }
-
-  const currentLoads = { MORNING: 0, AFTERNOON: 0, EVENING: 0 }
-  existingTasks.forEach(
-    (t: {
-      phase?: 'MORNING' | 'AFTERNOON' | 'EVENING'
-      durationMinutes?: number
-      isCompleted?: boolean
-    }) => {
-      if (!t.isCompleted && t.phase && currentLoads[t.phase] !== undefined) {
-        currentLoads[t.phase] += t.durationMinutes || 30
-      }
-    }
-  )
 
   const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY
 
@@ -896,22 +884,84 @@ app.post('/api/ai/daily-plan', async (c) => {
   }
 
   try {
-    const systemPrompt = `You are an executive daily planning coach for a minimalist Life OS.
-Your job is to parse what the user needs to do today and schedule tasks into the optimal phase of the day.
+    const openTasks = (existingTasks as Array<{
+      title: string
+      durationMinutes?: number
+      phase?: string
+      isCompleted?: boolean
+      habitId?: string | null
+    }>).filter((t) => !t.isCompleted && !t.habitId)
 
-PHASE CAPACITY RULES:
-- MORNING capacity: 180 mins total. Current used: ${currentLoads.MORNING} mins.
-- AFTERNOON capacity: 180 mins total. Current used: ${currentLoads.AFTERNOON} mins.
-- EVENING capacity: 90 mins total. Current used: ${currentLoads.EVENING} mins.
+    const openHabits = (habits as Array<{
+      title: string
+      durationMinutes?: number
+      phase?: string
+      isCompletedToday?: boolean
+    }>).filter((h) => !h.isCompletedToday)
 
-STRICT SCHEDULING CONSTRAINTS:
-1. Work / professional / focus-heavy tasks MUST ONLY go into MORNING or AFTERNOON. Never EVENING.
-2. Personal, relaxing, or lightweight end-of-day tasks can go into EVENING or any phase with room.
-3. Automatically pick the next available phase that has enough remaining minute capacity.
+    const sortedCommitments = (commitments as Array<{
+      title: string
+      startTime: string
+      endTime?: string | null
+      child?: string | null
+    }>).sort((a, b) => a.startTime.localeCompare(b.startTime))
+
+    const tasksContext =
+      openTasks.length > 0
+        ? openTasks
+            .map(
+              (t) =>
+                `- ${t.title} (${t.durationMinutes || 30}m, ${t.phase || 'MORNING'})`
+            )
+            .join('\n')
+        : '- None'
+
+    const commitmentsContext =
+      sortedCommitments.length > 0
+        ? sortedCommitments
+            .map(
+              (c) =>
+                `- ${c.startTime}${c.endTime ? `-${c.endTime}` : ''} ${c.title}${
+                  c.child ? ` (${c.child})` : ''
+                }`
+            )
+            .join('\n')
+        : '- None'
+
+    const habitsContext =
+      openHabits.length > 0
+        ? openHabits
+            .map(
+              (h) =>
+                `- ${h.title} (${h.durationMinutes || 20}m, ${h.phase || 'MORNING'})`
+            )
+            .join('\n')
+        : '- None'
+
+    const systemPrompt = `You are an executive daily planning coach for a minimalist Life OS. You help the user fit their priorities into today, respecting the fixed points they already have.
+
+TODAY'S CONTEXT:
+
+Open tasks (not yet completed):
+${tasksContext}
+
+Fixed commitments (time-bound, cannot be moved):
+${commitmentsContext}
+
+Habits still to do today:
+${habitsContext}
+
+SCHEDULING RULES:
+1. Work / professional / focus-heavy tasks go into MORNING or AFTERNOON. Never EVENING.
+2. Personal, relaxing, or lightweight tasks can go into EVENING.
+3. Do NOT schedule tasks that would overlap with a fixed commitment. If the user has a 3:15pm commitment, don't put a 90-minute focus task starting at 2:45pm.
+4. Habits are already part of the day — don't duplicate them as new tasks, but factor their time into your reasoning.
+5. If the user is already heavily loaded, say so in your reply rather than silently over-scheduling.
+6. Be specific in your reply. Reference the actual commitments or tasks you're working around.
 
 Return ONLY a valid JSON object matching this structure:
 {
-  "reply": "1-2 sentence supportive or clarifying response.",
+  "reply": "1-2 sentence response that references the user's actual day.",
   "suggestedTasks": [
     {
       "title": "Task title",
@@ -945,7 +995,9 @@ Return ONLY a valid JSON object matching this structure:
 
     return c.json({
       reply: parsed.reply || 'What else do you need to get done today?',
-      suggestedTasks: Array.isArray(parsed.suggestedTasks) ? parsed.suggestedTasks : [],
+      suggestedTasks: Array.isArray(parsed.suggestedTasks)
+        ? parsed.suggestedTasks
+        : [],
     })
   } catch (err) {
     console.error('Daily Plan AI Error:', err)

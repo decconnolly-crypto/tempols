@@ -23,12 +23,24 @@ import { ActiveFocusView } from './views/ActiveFocusView'
 import { TaskBreakdownModal } from './modals/TaskBreakdownModal'
 import { DailyPlannerModal } from './modals/DailyPlannerModal'
 
+type Phase = 'MORNING' | 'AFTERNOON' | 'EVENING'
+
+function initialPhase(): Phase {
+  const h = new Date().getHours()
+  if (h < 12) return 'MORNING'
+  if (h < 17) return 'AFTERNOON'
+  return 'EVENING'
+}
+
 export default function App() {
   const [tasks, setTasks] = useState<AppTask[]>([])
   const [horizons, setHorizons] = useState<Horizon[]>([])
   const [habits, setHabits] = useState<Habit[]>([])
   const [commitments, setCommitments] = useState<Commitment[]>([])
-  const [currentDateStr, setCurrentDateStr] = useState<string>(formatDateStr(new Date()))
+  const [currentDateStr, setCurrentDateStr] = useState<string>(
+    formatDateStr(new Date())
+  )
+  const [selectedPhase, setSelectedPhase] = useState<Phase>(initialPhase)
   const [isDailyPlannerOpen, setIsDailyPlannerOpen] = useState(false)
 
   const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false)
@@ -40,7 +52,9 @@ export default function App() {
   const [isWeeklyCommitmentsOpen, setIsWeeklyCommitmentsOpen] = useState(false)
   const [breakdownTask, setBreakdownTask] = useState<AppTask | null>(null)
   const [actionTask, setActionTask] = useState<AppTask | null>(null)
-  const [actionCommitment, setActionCommitment] = useState<Commitment | null>(null)
+  const [actionCommitment, setActionCommitment] = useState<Commitment | null>(
+    null
+  )
   const [milestoneHorizon, setMilestoneHorizon] = useState<Horizon | null>(null)
   const [detailMilestone, setDetailMilestone] = useState<Milestone | null>(null)
 
@@ -186,7 +200,9 @@ export default function App() {
     const nextState = !wasCompleted
 
     setHabits((prev) =>
-      prev.map((h) => (h.id === id ? { ...h, isCompletedToday: nextState } : h))
+      prev.map((h) =>
+        h.id === id ? { ...h, isCompletedToday: nextState } : h
+      )
     )
 
     if (navigator.vibrate) navigator.vibrate(10)
@@ -194,7 +210,9 @@ export default function App() {
     if (nextState && habit) {
       showUndo(`${habit.title} done`, () => {
         setHabits((prev) =>
-          prev.map((h) => (h.id === id ? { ...h, isCompletedToday: false } : h))
+          prev.map((h) =>
+            h.id === id ? { ...h, isCompletedToday: false } : h
+          )
         )
         fetch(`/api/habits/${id}/toggle`, {
           method: 'POST',
@@ -415,8 +433,8 @@ export default function App() {
   )
 
   return (
-<div className="min-h-screen text-black font-sans p-5 pb-32 bg-gradient-to-b from-[#F4F1EC] via-[#EEEBF5] to-[#E8EEF4] bg-fixed">
-<div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto relative h-full">
+    <div className="min-h-screen text-black font-sans p-5 pb-32 bg-gradient-to-b from-[#F4F1EC] via-[#EEEBF5] to-[#E8EEF4] bg-fixed">
+      <div className="max-w-md mx-auto relative h-full">
         <Switch>
           <Route
             path="/"
@@ -435,6 +453,8 @@ export default function App() {
                 onOpenCommitmentCreate={() => setIsNewCommitmentOpen(true)}
                 onOpenWeeklyView={() => setIsWeeklyCommitmentsOpen(true)}
                 onCommitmentClick={(c) => setActionCommitment(c)}
+                selectedPhase={selectedPhase}
+                onSelectPhase={setSelectedPhase}
               />
             )}
           />
@@ -535,7 +555,8 @@ export default function App() {
             return {
               ...prev,
               tasks: updatedTasks,
-              completedTaskCount: updatedTasks.filter((t) => t.isCompleted).length,
+              completedTaskCount: updatedTasks.filter((t) => t.isCompleted)
+                .length,
             }
           })
         }}
@@ -567,7 +588,10 @@ export default function App() {
       <DailyPlannerModal
         isOpen={isDailyPlannerOpen}
         onClose={() => setIsDailyPlannerOpen(false)}
+        currentDateStr={currentDateStr}
         existingTasks={tasks}
+        commitments={commitments}
+        habits={habits}
         onAddTasks={handleAddPlannerTasks}
       />
 
