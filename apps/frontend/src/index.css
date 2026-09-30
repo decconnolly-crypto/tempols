@@ -29,3 +29,55 @@
       outline-offset: 2px;
     }
   }
+  @layer utilities {
+    @keyframes breathe {
+      0%, 100% {
+        transform: scale(1);
+        opacity: 0.9;
+      }
+      50% {
+        transform: scale(1.08);
+        opacity: 1;
+      }
+    }
+  
+    @keyframes shimmer {
+      0% {
+        opacity: 0.4;
+        transform: translateX(-30%);
+      }
+      50% {
+        opacity: 0.9;
+        transform: translateX(30%);
+      }
+      100% {
+        opacity: 0.4;
+        transform: translateX(-30%);
+      }
+    }
+  
+    @keyframes orbit {
+      0% {
+        transform: rotate(0deg);
+      }
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+  
+    .animate-breathe {
+      animation: breathe 5s ease-in-out infinite;
+    }
+  
+    .animate-breathe-slow {
+      animation: breathe 7s ease-in-out infinite;
+    }
+  
+    .animate-shimmer {
+      animation: shimmer 6s ease-in-out infinite;
+    }
+  
+    .animate-orbit {
+      animation: orbit 20s linear infinite;
+    }
+  }

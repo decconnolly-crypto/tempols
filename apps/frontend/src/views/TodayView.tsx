@@ -4,6 +4,7 @@ import type { AppTask, Habit, Horizon, Commitment } from '../types'
 import { TaskCard } from '../components/TaskCard'
 import { DaySummaryCard } from '../components/DaySummaryCard'
 import { CommitmentCard } from '../components/CommitmentCard'
+import { DailyHero } from '../components/DailyHero'
 
 interface TodayViewProps {
   tasks: AppTask[]
@@ -50,15 +51,6 @@ function isToday(dateStr: string): boolean {
   return `${yyyy}-${mm}-${dd}` === dateStr
 }
 
-function formatHeaderDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  })
-}
-
 export function TodayView({
   tasks,
   habits = [],
@@ -76,20 +68,19 @@ export function TodayView({
 }: TodayViewProps) {
   const [selectedPhase, setSelectedPhase] = useState<Phase>(currentPhase())
   const [completedSheetOpen, setCompletedSheetOpen] = useState(false)
-  const [greeting, setGreeting] = useState<string | null>(null)
+  const [heroCollapsed, setHeroCollapsed] = useState(false)
 
   const [, setLocation] = useLocation()
-
+  // Collapse the hero after scrolling ~120px. The hero's container keeps
+  // a fixed height so the document doesn't shrink — no scroll jump.
   useEffect(() => {
-    const key = 'tempols:lastGreetingDate'
-    const today = currentDateStr
-    if (localStorage.getItem(key) !== today) {
-      const h = new Date().getHours()
-      const g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
-      setGreeting(g)
-      localStorage.setItem(key, today)
+    const handleScroll = () => {
+      setHeroCollapsed(window.scrollY > 120)
     }
-  }, [currentDateStr])
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   const horizonMap = useMemo(() => new Map(horizons.map((h) => [h.id, h])), [horizons])
 
@@ -131,50 +122,44 @@ export function TodayView({
 
   return (
     <div className="animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div className="min-w-0">
-          {greeting && (
-            <p className="text-[13px] font-medium text-black/55 mb-0.5">{greeting}, Dec.</p>
-          )}
-          <h1 className="text-2xl font-medium text-black tracking-tight leading-tight">
-            {formatHeaderDate(currentDateStr)}
-          </h1>
-        </div>
+      {/* Daily hero */}
+      <DailyHero
+        currentDateStr={currentDateStr}
+        tasks={tasks}
+        commitments={commitments}
+        habits={habits}
+        collapsed={heroCollapsed}
+      />
+   
+      {/* Action buttons */}
+      <div className="flex items-center justify-end gap-2 mb-5">
+        <button
+          type="button"
+          onClick={onOpenPlanner}
+          className="h-9 px-3.5 bg-white/60 backdrop-blur-xl hover:bg-white/80 text-black transition-all duration-200 rounded-full text-[11px] font-semibold border border-white/60 shadow-[0_2px_8px_rgba(0,0,0,0.04)] flex items-center gap-1.5 active:scale-95"
+        >
+          <svg className="w-3 h-3 text-black/60" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2L14.26 8.74L21 11L14.26 13.26L12 20L9.74 13.26L3 11L9.74 8.74L12 2Z" />
+          </svg>
+          <span>Plan</span>
+        </button>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={onOpenPlanner}
-            className="h-9 px-3.5 bg-white/60 backdrop-blur-xl hover:bg-white/80 text-black transition-all duration-200 rounded-full text-[11px] font-semibold border border-white/60 shadow-[0_2px_8px_rgba(0,0,0,0.04)] flex items-center gap-1.5 active:scale-95 group"
-          >
-            <svg
-              className="w-3 h-3 text-black/60"
-              fill="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path d="M12 2L14.26 8.74L21 11L14.26 13.26L12 20L9.74 13.26L3 11L9.74 8.74L12 2Z" />
-            </svg>
-            <span>Plan</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setCompletedSheetOpen(true)}
-            className="h-9 px-3 bg-white/60 backdrop-blur-xl text-black rounded-full text-[11px] font-semibold border border-white/60 shadow-[0_2px_8px_rgba(0,0,0,0.04)] flex items-center gap-1 active:scale-95 transition-transform"
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            <span>
-              {completedToday}/{totalToday}
-            </span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setCompletedSheetOpen(true)}
+          className="h-9 px-3 bg-white/60 backdrop-blur-xl text-black rounded-full text-[11px] font-semibold border border-white/60 shadow-[0_2px_8px_rgba(0,0,0,0.04)] flex items-center gap-1 active:scale-95 transition-transform"
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          <span>
+            {completedToday}/{totalToday}
+          </span>
+        </button>
       </div>
-      
-            {/* Commitments strip — actions inline on the last card */}
-            {sortedCommitments.length === 0 && onOpenCommitmentCreate && (
+
+      {/* Commitments strip */}
+      {sortedCommitments.length === 0 && onOpenCommitmentCreate && (
         <div className="mb-5">
           <button
             type="button"
@@ -204,15 +189,13 @@ export function TodayView({
         </div>
       )}
 
-
-
       <DaySummaryCard
         tasks={tasks}
         onOpenTask={(t) => setLocation(`/focus/${t.id}`)}
         onOpenPlanner={onOpenPlanner}
       />
 
-      {/* Phase tabs — glass */}
+      {/* Phase tabs */}
       <div className="bg-white/40 backdrop-blur-2xl border border-white/50 rounded-2xl p-1 flex items-stretch mb-6 shadow-[0_1px_4px_rgba(0,0,0,0.02)]">
         {PHASES.map((phase) => {
           const isSelected = selectedPhase === phase
@@ -228,7 +211,11 @@ export function TodayView({
                   : 'text-black/55 hover:text-black/80'
               }`}
             >
-              <div className={`text-[12px] font-semibold leading-tight ${isSelected ? 'text-black' : ''}`}>
+              <div
+                className={`text-[12px] font-semibold leading-tight ${
+                  isSelected ? 'text-black' : ''
+                }`}
+              >
                 {phaseLabel(phase)}
               </div>
               <div
