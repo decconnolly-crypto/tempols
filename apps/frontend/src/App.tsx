@@ -690,10 +690,6 @@ export default function App() {
                   setEditingRecipe(null)
                   setRecipeFormOpen(true)
                 }}
-                onEditRecipe={(r) => {
-                  setEditingRecipe(r)
-                  setRecipeFormOpen(true)
-                }}
                 onViewRecipe={(r) => setDetailRecipe(r)}
                 onAddFromUrl={() => setIsAddFromUrlOpen(true)}
               />

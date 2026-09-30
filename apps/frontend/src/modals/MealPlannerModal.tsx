@@ -26,14 +26,6 @@ function parseDateStr(s: string): Date {
   return new Date(y, m - 1, d)
 }
 
-function addDays(dateStr: string, days: number): string {
-  const d = parseDateStr(dateStr)
-  d.setDate(d.getDate() + days)
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
-}
 
 function formatDateShort(dateStr: string): string {
   const d = parseDateStr(dateStr)

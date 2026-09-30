@@ -4,22 +4,20 @@ import type { Recipe, MealCategory } from '../types'
 import { CATEGORIES, categoryLabel } from '../utils/mealThemes'
 
 interface RecipesViewProps {
-  recipes: Recipe[]
-  loading: boolean
-  onNewRecipe: () => void
-  onEditRecipe: (recipe: Recipe) => void
-  onViewRecipe: (recipe: Recipe) => void
-  onAddFromUrl: () => void
-}
+    recipes: Recipe[]
+    loading: boolean
+    onNewRecipe: () => void
+    onViewRecipe: (recipe: Recipe) => void
+    onAddFromUrl: () => void
+  }
 
-export function RecipesView({
-  recipes,
-  loading,
-  onNewRecipe,
-  onEditRecipe,
-  onViewRecipe,
-  onAddFromUrl,
-}: RecipesViewProps) {
+  export function RecipesView({
+    recipes,
+    loading,
+    onNewRecipe,
+    onViewRecipe,
+    onAddFromUrl,
+  }: RecipesViewProps) {
   const [, setLocation] = useLocation()
   const [filter, setFilter] = useState<MealCategory | 'ALL'>('ALL')
 

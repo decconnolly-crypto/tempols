@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import type { Recipe, RecipeIngredient } from '../types'
 import { categoryLabel } from '../utils/mealThemes'
 
