@@ -125,8 +125,7 @@ export function TodayView({
   const completedToday = completedTasks.length
 
   const sortedCommitments = useMemo(
-    () =>
-      [...commitments].sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    () => [...commitments].sort((a, b) => a.startTime.localeCompare(b.startTime)),
     [commitments]
   )
 
@@ -136,7 +135,7 @@ export function TodayView({
       <div className="flex items-start justify-between mb-6">
         <div className="min-w-0">
           {greeting && (
-            <p className="text-[13px] font-medium text-black/50 mb-0.5">{greeting}, Dec.</p>
+            <p className="text-[13px] font-medium text-black/55 mb-0.5">{greeting}, Dec.</p>
           )}
           <h1 className="text-2xl font-medium text-black tracking-tight leading-tight">
             {formatHeaderDate(currentDateStr)}
@@ -147,10 +146,10 @@ export function TodayView({
           <button
             type="button"
             onClick={onOpenPlanner}
-            className="h-9 px-3.5 bg-white hover:bg-black hover:text-white text-black transition-all duration-200 rounded-full text-[11px] font-semibold border border-black/5 shadow-sm flex items-center gap-1.5 active:scale-95 group"
+            className="h-9 px-3.5 bg-white/60 backdrop-blur-xl hover:bg-white/80 text-black transition-all duration-200 rounded-full text-[11px] font-semibold border border-white/60 shadow-[0_2px_8px_rgba(0,0,0,0.04)] flex items-center gap-1.5 active:scale-95 group"
           >
             <svg
-              className="w-3 h-3 text-black/60 group-hover:text-white transition-colors"
+              className="w-3 h-3 text-black/60"
               fill="currentColor"
               viewBox="0 0 24 24"
             >
@@ -162,7 +161,7 @@ export function TodayView({
           <button
             type="button"
             onClick={() => setCompletedSheetOpen(true)}
-            className="h-9 px-3 bg-white text-black rounded-full text-[11px] font-semibold border border-black/5 shadow-sm flex items-center gap-1 active:scale-95 transition-transform"
+            className="h-9 px-3 bg-white/60 backdrop-blur-xl text-black rounded-full text-[11px] font-semibold border border-white/60 shadow-[0_2px_8px_rgba(0,0,0,0.04)] flex items-center gap-1 active:scale-95 transition-transform"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -173,55 +172,56 @@ export function TodayView({
           </button>
         </div>
       </div>
-
-      {/* Commitments strip */}
-      <div className="mb-5">
-        <div className="flex items-center justify-between mb-2 px-1">
-          <span className="text-[10px] font-semibold text-black/40 uppercase tracking-wider">
-            Today's commitments
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onOpenWeeklyView}
-              className="text-[10px] font-semibold text-black/50 hover:text-black transition-colors uppercase tracking-wider"
-            >
-              Week view
-            </button>
-            {onOpenCommitmentCreate && (
-              <button
-                type="button"
-                onClick={onOpenCommitmentCreate}
-                className="text-[11px] font-semibold text-black bg-black/5 hover:bg-black/10 px-2.5 py-1 rounded-full transition-colors"
-              >
-                + Add
-              </button>
-            )}
-          </div>
+      
+            {/* Commitments strip — actions inline on the last card */}
+            {sortedCommitments.length === 0 && onOpenCommitmentCreate && (
+        <div className="mb-5">
+          <button
+            type="button"
+            onClick={onOpenCommitmentCreate}
+            className="w-full bg-white/40 backdrop-blur-xl border border-dashed border-white/60 rounded-2xl py-3 px-4 text-center text-[11px] font-medium text-black/45 hover:bg-white/60 hover:text-black/70 transition-colors"
+          >
+            No commitments today. Tap to add one.
+          </button>
         </div>
+      )}
 
-        {sortedCommitments.length === 0 ? (
-          onOpenCommitmentCreate && (
-            <button
-              type="button"
-              onClick={onOpenCommitmentCreate}
-              className="w-full bg-white/40 border border-dashed border-black/10 rounded-2xl py-3 px-4 text-center text-[11px] font-medium text-black/40 hover:bg-white/60 transition-colors"
-            >
-              No commitments today. Tap to add one.
-            </button>
-          )
-        ) : (
-          <div className="space-y-2">
-            {sortedCommitments.map((c) => (
+      {sortedCommitments.length > 0 && (
+        <div className="mb-5 space-y-2">
+          {sortedCommitments.map((c, index) => {
+            const isLast = index === sortedCommitments.length - 1
+            return (
               <CommitmentCard
                 key={`${c.id}-${c.occurrenceDate}`}
                 commitment={c}
                 onClick={onCommitmentClick}
+                showActions={isLast}
+                onOpenWeeklyView={isLast ? onOpenWeeklyView : undefined}
+                onAddCommitment={isLast ? onOpenCommitmentCreate : undefined}
               />
-            ))}
-          </div>
-        )}
-      </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Commitments strip — actions inline on the last card */}
+      {sortedCommitments.length > 0 && (
+        <div className="mb-5 space-y-2">
+          {sortedCommitments.map((c, index) => {
+            const isLast = index === sortedCommitments.length - 1
+            return (
+              <CommitmentCard
+                key={`${c.id}-${c.occurrenceDate}`}
+                commitment={c}
+                onClick={onCommitmentClick}
+                showActions={isLast}
+                onOpenWeeklyView={isLast ? onOpenWeeklyView : undefined}
+                onAddCommitment={isLast ? onOpenCommitmentCreate : undefined}
+              />
+            )
+          })}
+        </div>
+      )}
 
       <DaySummaryCard
         tasks={tasks}
@@ -229,8 +229,8 @@ export function TodayView({
         onOpenPlanner={onOpenPlanner}
       />
 
-      {/* Phase tabs */}
-      <div className="bg-black/10 p-1 rounded-2xl flex items-stretch mb-6 backdrop-blur-sm">
+      {/* Phase tabs — glass */}
+      <div className="bg-white/40 backdrop-blur-2xl border border-white/50 rounded-2xl p-1 flex items-stretch mb-6 shadow-[0_1px_4px_rgba(0,0,0,0.02)]">
         {PHASES.map((phase) => {
           const isSelected = selectedPhase === phase
           const stat = phaseStats[phase]
@@ -240,15 +240,17 @@ export function TodayView({
               type="button"
               onClick={() => setSelectedPhase(phase)}
               className={`flex-1 py-2.5 px-1 rounded-xl transition-all duration-200 text-center ${
-                isSelected ? 'bg-black text-white shadow-md' : 'text-black/60'
+                isSelected
+                  ? 'bg-white/80 shadow-[0_1px_3px_rgba(0,0,0,0.06)]'
+                  : 'text-black/55 hover:text-black/80'
               }`}
             >
-              <div className="text-[12px] font-semibold leading-tight">
+              <div className={`text-[12px] font-semibold leading-tight ${isSelected ? 'text-black' : ''}`}>
                 {phaseLabel(phase)}
               </div>
               <div
                 className={`text-[10px] font-medium leading-tight mt-0.5 ${
-                  isSelected ? 'text-white/60' : 'text-black/40'
+                  isSelected ? 'text-black/50' : 'text-black/35'
                 }`}
               >
                 {stat.count === 0 ? '—' : `${stat.count} · ${formatMins(stat.mins)}`}
@@ -266,10 +268,10 @@ export function TodayView({
               key={`habit-${habit.id}`}
               type="button"
               onClick={() => toggleHabit?.(habit.id)}
-              className={`px-3.5 py-2 rounded-full text-[12px] font-medium transition-all active:scale-95 flex items-center gap-2 ${
+              className={`px-3.5 py-2 rounded-full text-[12px] font-medium transition-all active:scale-95 flex items-center gap-2 backdrop-blur-xl border ${
                 habit.isCompletedToday
-                  ? 'bg-black/5 text-black/40'
-                  : 'bg-[#E0E7FF] text-indigo-950 hover:bg-[#d5deff]'
+                  ? 'bg-white/35 border-white/40 text-black/40'
+                  : 'bg-[#E0E7FF]/70 border-[#E0E7FF]/60 text-indigo-950 hover:bg-[#E0E7FF]/85'
               }`}
             >
               <span className={habit.isCompletedToday ? 'line-through' : ''}>
@@ -292,8 +294,8 @@ export function TodayView({
       {/* Task list */}
       <div className="space-y-3 mb-6">
         {activePhaseTasks.length === 0 ? (
-          <div className="bg-white/40 border border-dashed border-black/10 rounded-[1.75rem] py-6 px-5 text-center">
-            <p className="text-[12px] font-medium text-black/50">
+          <div className="bg-white/40 backdrop-blur-xl border border-dashed border-white/60 rounded-[1.75rem] py-6 px-5 text-center">
+            <p className="text-[12px] font-medium text-black/45">
               Nothing planned for the {phaseLabel(selectedPhase).toLowerCase()}.
             </p>
           </div>
@@ -315,7 +317,7 @@ export function TodayView({
         <button
           type="button"
           onClick={() => onChangeDate(-1)}
-          className="text-[11px] font-medium text-black/40 hover:text-black transition-colors flex items-center gap-1"
+          className="text-[11px] font-medium text-black/45 hover:text-black transition-colors flex items-center gap-1"
         >
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -334,7 +336,7 @@ export function TodayView({
         <button
           type="button"
           onClick={() => onChangeDate(1)}
-          className="text-[11px] font-medium text-black/40 hover:text-black transition-colors flex items-center gap-1"
+          className="text-[11px] font-medium text-black/45 hover:text-black transition-colors flex items-center gap-1"
         >
           Tomorrow
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -350,7 +352,7 @@ export function TodayView({
             className="absolute inset-0 bg-black/20 backdrop-blur-sm"
             onClick={() => setCompletedSheetOpen(false)}
           />
-          <div className="relative bg-white w-full max-w-md rounded-t-[2rem] p-6 pb-8 shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-200 max-h-[70vh] overflow-y-auto">
+          <div className="relative bg-white/80 backdrop-blur-2xl w-full max-w-md rounded-t-[2rem] p-6 pb-8 shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-200 max-h-[70vh] overflow-y-auto border-t border-white/60">
             <div className="flex justify-center mb-3">
               <div className="w-10 h-1 bg-black/15 rounded-full" />
             </div>
@@ -376,7 +378,7 @@ export function TodayView({
                 {completedTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="bg-black/5 rounded-2xl p-3.5 flex items-center justify-between"
+                    className="bg-white/50 backdrop-blur-sm border border-white/50 rounded-2xl p-3.5 flex items-center justify-between"
                   >
                     <span className="text-[13px] font-medium text-black/60 line-through truncate pr-3">
                       {task.title}

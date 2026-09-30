@@ -415,7 +415,7 @@ export default function App() {
   )
 
   return (
-    <div className="min-h-screen bg-[#9CA3AF] text-black font-sans p-5 pb-32">
+<div className="min-h-screen text-black font-sans p-5 pb-32 bg-gradient-to-b from-[#F4F1EC] via-[#EEEBF5] to-[#E8EEF4] bg-fixed">
       <div className="max-w-md mx-auto relative h-full">
         <Switch>
           <Route
