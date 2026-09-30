@@ -204,24 +204,7 @@ export function TodayView({
         </div>
       )}
 
-      {/* Commitments strip — actions inline on the last card */}
-      {sortedCommitments.length > 0 && (
-        <div className="mb-5 space-y-2">
-          {sortedCommitments.map((c, index) => {
-            const isLast = index === sortedCommitments.length - 1
-            return (
-              <CommitmentCard
-                key={`${c.id}-${c.occurrenceDate}`}
-                commitment={c}
-                onClick={onCommitmentClick}
-                showActions={isLast}
-                onOpenWeeklyView={isLast ? onOpenWeeklyView : undefined}
-                onAddCommitment={isLast ? onOpenCommitmentCreate : undefined}
-              />
-            )
-          })}
-        </div>
-      )}
+
 
       <DaySummaryCard
         tasks={tasks}
