@@ -1333,7 +1333,245 @@ app.delete('/api/meals/:id', async (c) => {
   await prisma.meal.delete({ where: { id } })
   return c.json({ success: true })
 })
+// ── Organised shopping list (AI, cached per week) ──
 
+const SHOPPING_AISLES = [
+  'Fruit & Veg',
+  'Chilled',
+  'Meat',
+  'Bakery',
+  'Dairy',
+  'Cupboard',
+  'Frozen',
+  'Drinks',
+  'NEG',
+]
+
+const SHOPPING_ORGANISER_PROMPT = `You are organising a UK grocery shopping list. You will receive raw ingredient strings from a week's recipes. Return them grouped by supermarket aisle, deduplicated and aggregated.
+
+AISLES (in this exact order — a shopper walks the shop in this sequence):
+1. Fruit & Veg
+2. Chilled
+3. Meat
+4. Bakery
+5. Dairy
+6. Cupboard
+7. Frozen
+8. Drinks
+9. NEG (non-edible groceries: washing up liquid, bin bags, kitchen roll, etc.)
+
+RULES:
+- Every ingredient goes into exactly one aisle. Use "Cupboard" for tins, pasta, rice, spices, oils, sauces, flour, and anything shelf-stable.
+- "Chilled" is for fresh things that live in the fridge but are NOT meat or dairy (e.g. fresh pasta, houmous, pre-made sauces, coleslaw).
+- "Dairy" is for milk, cheese, butter, yoghurt, cream, eggs.
+- "Meat" is for all fresh and frozen meat, fish, and meat alternatives.
+- Aggregate duplicates: "1 brown onion, finely chopped" and "2 onions" become a single line "Onions" with combined quantity 3.
+- Preserve units sensibly. If quantities are incompatible (e.g. "1 onion" + "2 tbsp onion powder"), keep them as separate lines.
+- Prep instructions ("finely chopped", "diced") can be discarded. Keep the ingredient name and quantity.
+- If an ingredient doesn't obviously fit any aisle, use your best judgement. Prefer Cupboard over guessing wrong.
+
+Return ONLY valid JSON, no prose, no code fences:
+
+{
+  "sections": [
+    {
+      "aisle": "Fruit & Veg",
+      "items": [
+        { "name": "Onions", "quantity": "3", "from": ["Pot Pie", "Dhal"] }
+      ]
+    }
+  ]
+}
+
+Include only aisles that have items. Preserve the aisle order above.`
+
+app.post('/api/meals/shopping-list/organise', async (c) => {
+  const { weekStart, force } = await c.req
+    .json()
+    .catch(() => ({ weekStart: '', force: false }))
+
+  const start = weekStart || getTodayStr()
+  const end = addDays(start, 6)
+
+  // Check the cache first (unless forcing a regenerate)
+  if (!force) {
+    const cached = await prisma.shoppingListCache.findUnique({
+      where: { weekStart: start },
+    })
+    if (cached) {
+      return c.json({
+        weekStart: start,
+        weekEnd: end,
+        cached: true,
+        sections: safeParseJson<unknown[]>(cached.data, []),
+      })
+    }
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    return c.json(
+      { error: 'AI key not configured. Cannot organise shopping list.' },
+      400
+    )
+  }
+
+  try {
+    // Gather the raw ingredients across the week's meals
+    const meals = await prisma.meal.findMany({
+      where: { date: { gte: start, lte: end } },
+      include: { recipe: true },
+    })
+
+    const rawIngredients: Array<{ text: string; from: string }> = []
+    for (const meal of meals) {
+      if (!meal.recipe) continue
+      const ingredients = safeParseJson<unknown[]>(
+        meal.recipe.ingredients,
+        []
+      )
+      for (const raw of ingredients) {
+        if (typeof raw === 'string') {
+          rawIngredients.push({ text: raw, from: meal.recipe.title })
+        } else if (raw && typeof raw === 'object') {
+          const obj = raw as {
+            name?: string
+            quantity?: string
+            unit?: string
+          }
+          const text = [obj.quantity, obj.unit, obj.name]
+            .filter(Boolean)
+            .join(' ')
+            .trim()
+          if (text) rawIngredients.push({ text, from: meal.recipe.title })
+        }
+      }
+    }
+
+    if (rawIngredients.length === 0) {
+      return c.json({
+        weekStart: start,
+        weekEnd: end,
+        cached: false,
+        sections: [],
+      })
+    }
+
+    const userPrompt = `INGREDIENTS:\n${rawIngredients
+      .map((i) => `- ${i.text} (from ${i.from})`)
+      .join('\n')}`
+
+    const model = 'gemini-2.5-flash'
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'TempoLS/1.0',
+        },
+        body: JSON.stringify({
+          contents: [
+            { parts: [{ text: SHOPPING_ORGANISER_PROMPT }] },
+            { parts: [{ text: userPrompt }] },
+          ],
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const errBody = await response.text()
+      console.error('Organise shopping list error:', response.status, errBody)
+      throw new Error(`Gemini HTTP ${response.status}`)
+    }
+
+    const data = await response.json()
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+    const cleanText = rawText.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(cleanText)
+
+    const sections = Array.isArray(parsed.sections) ? parsed.sections : []
+
+    // Cache the result (upsert)
+    await prisma.shoppingListCache.upsert({
+      where: { weekStart: start },
+      create: { weekStart: start, data: JSON.stringify(sections) },
+      update: { data: JSON.stringify(sections) },
+    })
+
+    return c.json({
+      weekStart: start,
+      weekEnd: end,
+      cached: false,
+      sections,
+    })
+  } catch (err) {
+    console.error('Organise shopping list error:', err)
+    return c.json({ error: 'Could not organise the shopping list.' }, 500)
+  }
+})
+
+app.get('/api/meals/shopping-list/organised', async (c) => {
+  const start = c.req.query('weekStart') || getTodayStr()
+
+  const [cached, manualItems] = await Promise.all([
+    prisma.shoppingListCache.findUnique({ where: { weekStart: start } }),
+    prisma.shoppingListItem.findMany({
+      where: { weekStart: start },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ])
+
+  const sections = cached
+    ? safeParseJson<unknown[]>(cached.data, [])
+    : []
+
+  return c.json({
+    weekStart: start,
+    cached: Boolean(cached),
+    sections,
+    manualItems: manualItems.map((m) => ({
+      id: m.id,
+      name: m.name,
+      aisle: m.aisle,
+    })),
+  })
+})
+
+app.post('/api/meals/shopping-list/manual', async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+
+  if (!body.weekStart || !body.name || !body.aisle) {
+    return c.json(
+      { error: 'weekStart, name, and aisle are required' },
+      400
+    )
+  }
+
+  const item = await prisma.shoppingListItem.create({
+    data: {
+      weekStart: body.weekStart,
+      name: String(body.name).trim(),
+      aisle: String(body.aisle),
+    },
+  })
+
+  return c.json({
+    success: true,
+    item: {
+      id: item.id,
+      name: item.name,
+      aisle: item.aisle,
+    },
+  })
+})
+
+app.delete('/api/meals/shopping-list/manual/:id', async (c) => {
+  const id = c.req.param('id')
+  await prisma.shoppingListItem.delete({ where: { id } })
+  return c.json({ success: true })
+})
 app.get('/api/meals/shopping-list', async (c) => {
   const start = c.req.query('start') || getTodayStr()
   const end = c.req.query('end') || addDays(start, 6)
