@@ -118,11 +118,36 @@ export default function App() {
       title: string
       durationMinutes: number
       phase: 'MORNING' | 'AFTERNOON' | 'EVENING'
+      scheduledDate?: string
     }>
   ) => {
     try {
+      // Filter out tasks whose title already exists on the same date.
+      // This is a safety net — the prompt should already prevent this,
+      // but if the AI slips we don't want to create duplicates.
+      const existingKey = (title: string, date: string) =>
+        `${title.toLowerCase().trim()}::${date}`
+
+      const existingKeys = new Set(
+        tasks.map((t) =>
+          existingKey(t.title, t.scheduledDate || currentDateStr)
+        )
+      )
+
+      const tasksToCreate = suggestedTasks.filter((t) => {
+        const date = t.scheduledDate || currentDateStr
+        return !existingKeys.has(existingKey(t.title, date))
+      })
+
+      const skipped = suggestedTasks.length - tasksToCreate.length
+      if (skipped > 0) {
+        console.warn(
+          `[planner] skipped ${skipped} duplicate task${skipped === 1 ? '' : 's'}`
+        )
+      }
+
       await Promise.all(
-        suggestedTasks.map((t) =>
+        tasksToCreate.map((t) =>
           fetch('/api/tasks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -130,12 +155,14 @@ export default function App() {
               title: t.title,
               durationMinutes: t.durationMinutes || 30,
               phase: t.phase || 'MORNING',
-              scheduledDate: currentDateStr,
+              scheduledDate: t.scheduledDate || currentDateStr,
             }),
           })
         )
       )
 
+      // Refresh the current view. Tasks added for future days won't
+      // appear until you navigate to those days.
       fetchForDate(currentDateStr)
     } catch (err) {
       console.error('Failed to import AI tasks:', err)

@@ -1812,38 +1812,59 @@ app.post('/api/ai/daily-plan', async (c) => {
             .join('\n')
         : '- None'
 
-    const systemPrompt = `You are an executive daily planning coach for a minimalist Life OS. You help the user fit their priorities into today, respecting the fixed points they already have.
+        const todayStr = getTodayStr()
 
-TODAY'S CONTEXT:
-
-Open tasks (not yet completed):
-${tasksContext}
-
-Fixed commitments (time-bound, cannot be moved):
-${commitmentsContext}
-
-Habits still to do today:
-${habitsContext}
-
-SCHEDULING RULES:
-1. Work / professional / focus-heavy tasks go into MORNING or AFTERNOON. Never EVENING.
-2. Personal, relaxing, or lightweight tasks can go into EVENING.
-3. Do NOT schedule tasks that would overlap with a fixed commitment. If the user has a 3:15pm commitment, don't put a 90-minute focus task starting at 2:45pm.
-4. Habits are already part of the day — don't duplicate them as new tasks, but factor their time into your reasoning.
-5. If the user is already heavily loaded, say so in your reply rather than silently over-scheduling.
-6. Be specific in your reply. Reference the actual commitments or tasks you're working around.
-
-Return ONLY a valid JSON object matching this structure:
-{
-  "reply": "1-2 sentence response that references the user's actual day.",
-  "suggestedTasks": [
+        const systemPrompt = `You are an executive daily planning coach for a minimalist Life OS. You help the user fit their priorities into their schedule, respecting the fixed points they already have.
+    
+    TODAY'S DATE: ${todayStr}
+    
+    TODAY'S CONTEXT:
+    
+    Open tasks (not yet completed):
+    ${tasksContext}
+    
+    Fixed commitments (time-bound, cannot be moved):
+    ${commitmentsContext}
+    
+    Habits still to do today:
+    ${habitsContext}
+    
+    SCHEDULING RULES:
+    1. Work / professional / focus-heavy tasks go into MORNING or AFTERNOON. Never EVENING.
+    2. Personal, relaxing, or lightweight tasks can go into EVENING.
+    3. Do NOT schedule tasks that would overlap with a fixed commitment. If the user has a 3:15pm commitment, don't put a 90-minute focus task starting at 2:45pm.
+    4. Habits are already part of the day — don't duplicate them as new tasks, but factor their time into your reasoning.
+    5. If the user is already heavily loaded, say so in your reply rather than silently over-scheduling.
+    6. Be specific in your reply. Reference the actual commitments or tasks you're working around.
+    
+    MULTI-DAY SCHEDULING:
+    You can schedule tasks for FUTURE days, not just today. If the user says "call the accountant on Friday" or "prep for Monday's meeting" or "remind me next week to X", schedule that task on the appropriate date.
+    - Use today's date above as your anchor. "Tomorrow" = today + 1 day. "Monday" = the next Monday. "Next week" = a day in the following week.
+    - Task dates must be in YYYY-MM-DD format.
+    - If the user doesn't specify a date, assume today.
+    - Do not add context about future days you weren't asked about — don't pad out other days with guessed tasks.
+    
+    MOVING EXISTING TASKS:
+    You can only add new tasks. You cannot move, reschedule, delete, or edit existing tasks. If the user asks you to do this, say so in your reply and suggest they long-press the task in the Today view to move it.
+    
+    CRITICAL — DUPLICATE PREVENTION:
+    The "Open tasks" list above shows what the user already has. The \`suggestedTasks\` array you return is a DIFF, not a full picture. Only include tasks that are NEW.
+    - If the user asks to add one task, return an array with exactly ONE task in it.
+    - Never re-list tasks from the "Open tasks" list.
+    - Never list tasks the user didn't ask for.
+    
+    Return ONLY a valid JSON object matching this structure:
     {
-      "title": "Task title",
-      "durationMinutes": 30,
-      "phase": "MORNING" | "AFTERNOON" | "EVENING"
-    }
-  ]
-}`
+      "reply": "1-2 sentence response that references the user's actual day.",
+      "suggestedTasks": [
+        {
+          "title": "Task title",
+          "durationMinutes": 30,
+          "phase": "MORNING" | "AFTERNOON" | "EVENING",
+          "scheduledDate": "YYYY-MM-DD"
+        }
+      ]
+    }`
 
     const contents = [
       { parts: [{ text: systemPrompt }] },
@@ -1864,23 +1885,36 @@ Return ONLY a valid JSON object matching this structure:
 
     const data = await response.json()
     const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+    console.log('[daily-plan raw response]', rawText.slice(0, 500))
     const cleanText = rawText.replace(/```json|```/g, '').trim()
     const parsed = JSON.parse(cleanText)
 
-    return c.json({
-      reply: parsed.reply || 'What else do you need to get done today?',
-      suggestedTasks: Array.isArray(parsed.suggestedTasks)
-        ? parsed.suggestedTasks
-        : [],
-    })
-  } catch (err) {
-    console.error('Daily Plan AI Error:', err)
-    return c.json({
-      reply:
-        "Tell me what you'd like to achieve today, and I'll structure it into your schedule.",
-      suggestedTasks: [],
-    })
-  }
+        // If Gemini returned an empty or malformed response, flag it
+        if (!parsed.reply && !parsed.suggestedTasks) {
+          console.warn('[daily-plan] empty response from Gemini:', cleanText)
+          return c.json({
+            reply:
+              "⚠️ I couldn't parse a response just now. Try sending that again.",
+            suggestedTasks: [],
+            error: true,
+          })
+        }
+    
+        return c.json({
+          reply: parsed.reply || 'What else do you need to get done today?',
+          suggestedTasks: Array.isArray(parsed.suggestedTasks)
+            ? parsed.suggestedTasks
+            : [],
+        })
+      } catch (err) {
+        console.error('Daily Plan AI Error:', err)
+        return c.json({
+          reply:
+            "⚠️ I couldn't reach the AI just now. Try again in a moment.",
+          suggestedTasks: [],
+          error: true,
+        })
+      }
 })
 
 // ==========================================

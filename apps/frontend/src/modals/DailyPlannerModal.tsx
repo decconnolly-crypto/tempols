@@ -5,6 +5,7 @@ export interface SuggestedTask {
   title: string
   durationMinutes: number
   phase: 'MORNING' | 'AFTERNOON' | 'EVENING'
+  scheduledDate?: string
 }
 
 interface DailyPlannerModalProps {
@@ -296,22 +297,39 @@ export function DailyPlannerModal({
                 Proposed ({extractedTasks.length})
               </span>
               <div className="space-y-2 max-h-32 overflow-y-auto pr-1">
-                {extractedTasks.map((t, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between text-[12px] font-medium text-black"
-                  >
-                    <span className="truncate pr-2">{t.title}</span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-black/5 text-black/60">
-                        {t.phase}
-                      </span>
-                      <span className="text-black/40 text-[11px]">
-                        {t.durationMinutes}m
-                      </span>
+              {extractedTasks.map((t, idx) => {
+                  const isDifferentDay =
+                    t.scheduledDate && t.scheduledDate !== currentDateStr
+                  const shortDate = t.scheduledDate
+                    ? new Date(t.scheduledDate).toLocaleDateString('en-GB', {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                      })
+                    : null
+
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between text-[12px] font-medium text-black"
+                    >
+                      <span className="truncate pr-2">{t.title}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isDifferentDay && shortDate && (
+                          <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-black/10 text-black/70">
+                            {shortDate}
+                          </span>
+                        )}
+                        <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-black/5 text-black/60">
+                          {t.phase}
+                        </span>
+                        <span className="text-black/40 text-[11px]">
+                          {t.durationMinutes}m
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
               <button
                 type="button"
