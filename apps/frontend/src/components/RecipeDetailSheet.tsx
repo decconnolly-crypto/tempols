@@ -6,6 +6,7 @@ interface RecipeDetailSheetProps {
   recipe: Recipe | null
   onClose: () => void
   onEdit: (recipe: Recipe) => void
+  onChangeMeal?: () => void
 }
 
 function ingredientToText(ing: RecipeIngredient): string {
@@ -21,6 +22,7 @@ export function RecipeDetailSheet({
   recipe,
   onClose,
   onEdit,
+  onChangeMeal,
 }: RecipeDetailSheetProps) {
   const [checkedIngredients, setCheckedIngredients] = useState<Set<number>>(
     new Set()
@@ -261,8 +263,8 @@ export function RecipeDetailSheet({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-6 pt-3 pb-6 border-t border-white/40 relative z-10">
+                {/* Footer */}
+                <div className="px-6 pt-3 pb-6 border-t border-white/40 relative z-10 space-y-2">
           <button
             type="button"
             onClick={() => {
@@ -273,6 +275,16 @@ export function RecipeDetailSheet({
           >
             Edit recipe
           </button>
+
+          {onChangeMeal && (
+            <button
+              type="button"
+              onClick={onChangeMeal}
+              className="w-full bg-white/60 backdrop-blur-sm border border-white/60 text-black text-[12px] font-medium py-2.5 rounded-full hover:bg-white/80 active:scale-[0.98] transition-all"
+            >
+              Change meal for this day
+            </button>
+          )}
         </div>
       </div>
     </div>

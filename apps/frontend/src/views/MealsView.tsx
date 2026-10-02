@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import type { Meal } from '../types'
+import type { Meal, Recipe } from '../types'
 import { themeForDate } from '../utils/mealThemes'
 
 interface MealsViewProps {
@@ -7,6 +7,7 @@ interface MealsViewProps {
   onOpenRecipeLibrary: () => void
   onOpenShoppingList: () => void
   onOpenAIPlanner: () => void
+  onViewRecipe: (recipe: Recipe, date: string) => void
   refreshKey: number
   weekStart: string
   onWeekChange: (newStart: string) => void
@@ -74,6 +75,7 @@ export function MealsView({
   onOpenRecipeLibrary,
   onOpenShoppingList,
   onOpenAIPlanner,
+  onViewRecipe,
   refreshKey,
   weekStart,
   onWeekChange,
@@ -110,6 +112,14 @@ export function MealsView({
   }, [meals])
 
   const plannedCount = meals.filter((m) => m.recipe || m.notes).length
+
+  const handleDayClick = (day: string, meal: Meal | undefined) => {
+    if (meal?.recipe) {
+      onViewRecipe(meal.recipe, day)
+    } else {
+      onOpenRecipePicker(day)
+    }
+  }
 
   return (
     <div className="animate-in fade-in duration-300">
@@ -219,12 +229,13 @@ export function MealsView({
             const theme = themeForDate(day)
             const meal = mealByDate.get(day)
             const today = isToday(day)
+            const hasRecipe = Boolean(meal?.recipe)
 
             return (
               <button
                 key={day}
                 type="button"
-                onClick={() => onOpenRecipePicker(day)}
+                onClick={() => handleDayClick(day, meal)}
                 className={`relative w-full text-left rounded-2xl px-4 py-3.5 flex items-start gap-3 overflow-hidden transition-all active:scale-[0.99] bg-white/55 backdrop-blur-2xl border shadow-[0_2px_12px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.03)] ${
                   today ? 'border-white/80' : 'border-white/60 hover:bg-white/70'
                 }`}
@@ -282,15 +293,27 @@ export function MealsView({
                   )}
                 </div>
 
-                <svg
-                  className="w-3.5 h-3.5 text-black/25 mt-1.5 shrink-0 relative z-10"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
+                {hasRecipe ? (
+                  <svg
+                    className="w-3.5 h-3.5 text-black/25 mt-1.5 shrink-0 relative z-10"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                ) : (
+                  <svg
+                    className="w-3.5 h-3.5 text-black/25 mt-1.5 shrink-0 relative z-10"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                )}
               </button>
             )
           })}

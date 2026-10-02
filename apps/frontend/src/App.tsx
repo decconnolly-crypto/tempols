@@ -97,6 +97,7 @@ export default function App() {
   const [recipeFormOpen, setRecipeFormOpen] = useState(false)
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
   const [detailRecipe, setDetailRecipe] = useState<Recipe | null>(null)
+  const [detailRecipeSourceDate, setDetailRecipeSourceDate] = useState<string | null>(null)
   const [pickerDate, setPickerDate] = useState<string | null>(null)
   const [mealsRefreshKey, setMealsRefreshKey] = useState(0)
   const [mealsWeekStart, setMealsWeekStart] = useState<string>(mondayOfToday)
@@ -693,7 +694,7 @@ export default function App() {
               />
             )}
           />
-          <Route
+                    <Route
             path="/meals"
             component={() => (
               <MealsView
@@ -701,6 +702,10 @@ export default function App() {
                 onOpenRecipeLibrary={() => setLocation('/recipes')}
                 onOpenShoppingList={() => setIsShoppingListOpen(true)}
                 onOpenAIPlanner={() => setIsMealPlannerOpen(true)}
+                onViewRecipe={(r, date) => {
+                  setDetailRecipe(r)
+                  setDetailRecipeSourceDate(date)
+                }}
                 refreshKey={mealsRefreshKey}
                 weekStart={mealsWeekStart}
                 onWeekChange={setMealsWeekStart}
@@ -717,7 +722,10 @@ export default function App() {
                   setEditingRecipe(null)
                   setRecipeFormOpen(true)
                 }}
-                onViewRecipe={(r) => setDetailRecipe(r)}
+                onViewRecipe={(r, date) => {
+                  setDetailRecipe(r)
+                  setDetailRecipeSourceDate(date)
+                }}
                 onAddFromUrl={() => setIsAddFromUrlOpen(true)}
               />
             )}
@@ -829,13 +837,25 @@ export default function App() {
         }}
       />
 
-      <RecipeDetailSheet
+<RecipeDetailSheet
         recipe={detailRecipe}
-        onClose={() => setDetailRecipe(null)}
+        onClose={() => {
+          setDetailRecipe(null)
+          setDetailRecipeSourceDate(null)
+        }}
         onEdit={(r) => {
           setEditingRecipe(r)
           setRecipeFormOpen(true)
         }}
+        onChangeMeal={
+          detailRecipeSourceDate
+            ? () => {
+                setDetailRecipe(null)
+                setPickerDate(detailRecipeSourceDate)
+                setDetailRecipeSourceDate(null)
+              }
+            : undefined
+        }
       />
 
       <AddRecipeFromUrlModal
