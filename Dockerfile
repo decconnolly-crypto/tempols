@@ -30,4 +30,4 @@ EXPOSE 3002
 ENV NODE_ENV=production
 ENV DATABASE_URL="file:/app/apps/api/prisma/dev.db"
 
-CMD ["sh", "-c", "cd apps/api && DATABASE_URL=file:/app/apps/api/prisma/dev.db npx prisma db push --accept-data-loss && npx tsx src/index.ts"]
+CMD ["sh", "-c", "cd apps/api && DATABASE_URL=file:/app/apps/api/prisma/dev.db npx prisma migrate deploy && npx tsx src/index.ts"]
