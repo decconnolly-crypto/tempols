@@ -722,10 +722,7 @@ export default function App() {
                   setEditingRecipe(null)
                   setRecipeFormOpen(true)
                 }}
-                onViewRecipe={(r, date) => {
-                  setDetailRecipe(r)
-                  setDetailRecipeSourceDate(date)
-                }}
+                onViewRecipe={(r) => setDetailRecipe(r)}
                 onAddFromUrl={() => setIsAddFromUrlOpen(true)}
               />
             )}
